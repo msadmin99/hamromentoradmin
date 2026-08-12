@@ -1,0 +1,645 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f6f9;
+  --foreground: #16232b;
+
+  --color-brand-green: #017101;
+  --color-brand-green-light: #e6f5e6;
+  --color-brand-red: #ed220d;
+  --color-brand-red-light: #fdeceb;
+  --color-brand-blue: #0b5fd9;
+  --color-brand-blue-dark: #073d8c;
+  --color-sidebar: #0c1b2a;
+  --color-sidebar-hover: #16293c;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f4f6f9;
+  --color-border: #e3e8ee;
+  --color-text: #16232b;
+  --color-text-muted: #66757f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand-green: var(--color-brand-green);
+  --color-brand-green-light: var(--color-brand-green-light);
+  --color-brand-red: var(--color-brand-red);
+  --color-brand-red-light: var(--color-brand-red-light);
+  --color-brand-blue: var(--color-brand-blue);
+  --color-brand-blue-dark: var(--color-brand-blue-dark);
+  --color-sidebar: var(--color-sidebar);
+  --color-sidebar-hover: var(--color-sidebar-hover);
+  --color-surface: var(--color-surface);
+  --color-surface-muted: var(--color-surface-muted);
+  --color-border: var(--color-border);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.hm-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  background: white;
+}
+.hm-input:focus {
+  border-color: var(--color-brand-blue);
+}
+
+/* Rich editor toolbar controls — deliberately separate from .hm-input's
+   padding/height so buttons and selects share one consistent, comfortable
+   row height (2rem) instead of fighting Tailwind utility overrides, which
+   was clipping the Font/Size/Spacing select text. */
+.hm-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hm-toolbar-select {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 0.4rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-border);
+  background: white;
+  font-size: 0.75rem;
+  line-height: 2rem;
+  color: var(--color-text);
+  outline: none;
+}
+.hm-toolbar-select:focus {
+  border-color: var(--color-brand-blue);
+}
+
+.hm-richtext-content:empty:before {
+  content: attr(data-placeholder);
+  color: var(--color-text-muted);
+}
+.hm-richtext-content img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+  margin: 0.35rem 0;
+}
+.hm-richtext-content ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.hm-richtext-content ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.hm-richtext-content a {
+  color: var(--color-brand-blue);
+  text-decoration: underline;
+}
+.hm-richtext-content blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+.hm-richtext-content mark {
+  border-radius: 0.15rem;
+  padding: 0 0.1rem;
+}
+.hm-richtext-content sup,
+.hm-richtext-content sub {
+  font-size: 0.75em;
+}
+.hm-richtext-content table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0.5rem 0;
+  border: 1px solid var(--color-border);
+}
+.hm-richtext-content th,
+.hm-richtext-content td {
+  border: inherit;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.hm-richtext-content th {
+  background: var(--color-surface-muted);
+  font-weight: 600;
+}
+
+/* Table Design presets — each key matches TABLE_STYLE_PRESETS in RichEditor.js */
+.hm-richtext-content table[data-table-style="blue"] th {
+  background: #dbeafe;
+}
+.hm-richtext-content table[data-table-style="green"] th {
+  background: #dcfce7;
+}
+.hm-richtext-content table[data-table-style="gray"] th {
+  background: #e5e7eb;
+}
+.hm-richtext-content table[data-table-style="amber"] th {
+  background: #fef3c7;
+}
+.hm-richtext-content table[data-table-style="plain"] th {
+  background: transparent;
+}
+.hm-richtext-content table[data-banded-rows="true"] tbody tr:nth-child(even) td {
+  background: var(--color-surface-muted);
+}
+.hm-richtext-content table[data-table-style="blue"][data-banded-rows="true"] tbody tr:nth-child(even) td {
+  background: #eff6ff;
+}
+.hm-richtext-content table[data-table-style="green"][data-banded-rows="true"] tbody tr:nth-child(even) td {
+  background: #f0fdf4;
+}
+.hm-richtext-content table[data-table-style="amber"][data-banded-rows="true"] tbody tr:nth-child(even) td {
+  background: #fffbeb;
+}
+.hm-richtext-content table[data-banded-columns="true"] td:nth-child(even) {
+  background: var(--color-surface-muted);
+}
+.hm-richtext-content table[data-first-column="true"] td:first-child {
+  font-weight: 700;
+}
+.hm-richtext-content table[data-last-column="true"] td:last-child {
+  font-weight: 700;
+}
+.hm-richtext-content table[data-total-row="true"] tbody tr:last-child td {
+  border-top: 2px solid var(--color-text);
+  font-weight: 700;
+}
+.hm-richtext-content .hm-equation-node {
+  position: relative;
+  display: inline-block;
+}
+.hm-richtext-content .hm-equation-render {
+  display: inline-block;
+  vertical-align: middle;
+  padding: 0 0.15rem;
+  cursor: pointer;
+}
+.hm-richtext-content .hm-equation-render[data-display-mode="true"] {
+  display: block;
+  text-align: center;
+  padding: 0.5rem 0;
+  margin: 0.25rem 0;
+}
+.hm-richtext-content .hm-equation-editor-anchor {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 60;
+}
+.hm-richtext-content .hm-equation-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 20rem;
+  margin-top: 0.25rem;
+  padding: 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-border);
+  background: white;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.hm-richtext-content .hm-equation-editor-wide {
+  width: 26rem;
+}
+.hm-richtext-content .hm-equation-editor textarea {
+  width: 100%;
+}
+.hm-richtext-content .hm-equation-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hm-richtext-content .hm-equation-editor-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.hm-richtext-content .hm-equation-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.hm-richtext-content .hm-equation-mathfield-wrap {
+  position: relative;
+}
+.hm-richtext-content .hm-equation-mathfield {
+  display: block;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-border);
+  font-size: 1.05rem;
+}
+.hm-richtext-content .hm-equation-mathfield-loading {
+  display: block;
+  padding: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+.hm-richtext-content .hm-equation-editor-preview {
+  display: block;
+  overflow-x: auto;
+  border-radius: 0.35rem;
+  background: var(--color-surface-muted);
+  padding: 0.35rem 0.5rem;
+}
+.hm-richtext-content .hm-equation-template-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.35rem;
+}
+.hm-richtext-content .hm-equation-template-tab {
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+.hm-richtext-content .hm-equation-template-tab.active {
+  background: var(--color-brand-blue);
+  color: white;
+}
+.hm-richtext-content .hm-equation-editor-quickinserts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-height: 1.6rem;
+}
+.hm-richtext-content .hm-equation-editor-quickinserts button {
+  border-radius: 0.35rem;
+  background: var(--color-surface-muted);
+  padding: 0.25rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.hm-richtext-content .hm-equation-editor-quickinserts button:hover {
+  color: var(--color-text);
+  background: var(--color-border);
+}
+.hm-richtext-content .hm-equation-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.hm-richtext-content .hm-equation-placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-size: 0.85em;
+}
+
+/* ---- Image node editor chrome (Admin-only — the Frontend renders the plain
+   saved <figure>/<img> with no editing controls, so none of this needs to be
+   mirrored in Frontend/globals.css). ---- */
+.hm-richtext-content .hm-image-node {
+  max-width: 100%;
+}
+.hm-richtext-content .hm-image-node[data-wrap="none"] {
+  display: block;
+}
+.hm-richtext-content .hm-image-node img {
+  border-radius: 0.5rem;
+  display: block;
+}
+.hm-richtext-content .hm-image-resize-handle {
+  position: absolute;
+  z-index: 20;
+  height: 0.7rem;
+  width: 0.7rem;
+  border-radius: 9999px;
+  border: 2px solid white;
+  background: var(--color-brand-blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.hm-image-resize-nw {
+  top: -0.35rem;
+  left: -0.35rem;
+  cursor: nwse-resize;
+}
+.hm-image-resize-ne {
+  top: -0.35rem;
+  right: -0.35rem;
+  cursor: nesw-resize;
+}
+.hm-image-resize-sw {
+  bottom: -0.35rem;
+  left: -0.35rem;
+  cursor: nesw-resize;
+}
+.hm-image-resize-se {
+  bottom: -0.35rem;
+  right: -0.35rem;
+  cursor: nwse-resize;
+}
+
+.hm-richtext-content .hm-image-toolbar-anchor {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 60;
+  margin-bottom: 0.35rem;
+}
+.hm-richtext-content .hm-image-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem;
+  max-width: 22rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  background: #1f2937;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+.hm-richtext-content .hm-image-toolbar-divider {
+  margin: 0 0.15rem;
+  height: 1.1rem;
+  width: 1px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.hm-richtext-content .hm-image-settings-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 70;
+}
+.hm-richtext-content .hm-image-settings-panel {
+  width: 17rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-border);
+  background: white;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+.hm-richtext-content .hm-image-caption-toggle {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.35rem;
+  z-index: 20;
+  border-radius: 0.3rem;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.15rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: white;
+}
+.hm-richtext-content .hm-image-caption-input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--color-border);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.hm-richtext-content .hm-image-crop-editor {
+  display: inline-block;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-border);
+  background: white;
+  padding: 0.5rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+.hm-richtext-content .hm-image-crop-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.hm-richtext-content .hm-image-crop-stage {
+  position: relative;
+  overflow: hidden;
+  background: #111;
+}
+.hm-richtext-content .hm-image-crop-stage img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 0;
+  user-select: none;
+}
+.hm-richtext-content .hm-image-crop-rect {
+  position: absolute;
+  cursor: move;
+  border: 2px solid white;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+}
+.hm-richtext-content .hm-image-crop-handle {
+  position: absolute;
+  height: 0.65rem;
+  width: 0.65rem;
+  border-radius: 9999px;
+  border: 2px solid #1f2937;
+  background: white;
+}
+.hm-image-crop-handle-nw {
+  top: -0.35rem;
+  left: -0.35rem;
+  cursor: nwse-resize;
+}
+.hm-image-crop-handle-ne {
+  top: -0.35rem;
+  right: -0.35rem;
+  cursor: nesw-resize;
+}
+.hm-image-crop-handle-sw {
+  bottom: -0.35rem;
+  left: -0.35rem;
+  cursor: nesw-resize;
+}
+.hm-image-crop-handle-se {
+  bottom: -0.35rem;
+  right: -0.35rem;
+  cursor: nwse-resize;
+}
+
+/* ---- Drawing node (Admin-only editor chrome; the saved <figure><svg> needs
+   no special CSS beyond the responsive max-width rule mirrored in Frontend). ---- */
+.hm-richtext-content .hm-drawing-empty {
+  display: flex;
+  height: 8rem;
+  width: 100%;
+  max-width: 24rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.6rem;
+  border: 2px dashed var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.hm-richtext-content .hm-drawing-preview {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  cursor: pointer;
+}
+.hm-richtext-content .hm-drawing-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+.hm-richtext-content .hm-drawing-edit-badge {
+  position: absolute;
+  right: 0.35rem;
+  top: 0.35rem;
+  z-index: 20;
+  border-radius: 0.3rem;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: white;
+}
+
+.hm-drawing-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1rem;
+}
+.hm-drawing-modal-inner {
+  display: flex;
+  max-height: 95vh;
+  width: 100%;
+  max-width: 76rem;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: white;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+}
+.hm-drawing-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.75rem 1rem;
+}
+.hm-drawing-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.hm-drawing-toolbar {
+  width: 15rem;
+  flex: none;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  padding: 0.75rem;
+}
+.hm-drawing-panel-section {
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+}
+.hm-drawing-panel-title {
+  margin-bottom: 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.hm-drawing-canvas-wrap {
+  flex: 1;
+  overflow: auto;
+  background: #e5e7eb;
+  padding: 1rem;
+}
+
+.hm-richtext-content .hm-image-figure {
+  display: inline-block;
+  margin: 0.35rem 0;
+}
+.hm-richtext-content .hm-image-figure img {
+  margin: 0;
+}
+.hm-richtext-content .hm-image-figure figcaption {
+  margin-top: 0.25rem;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+.hm-richtext-content .hm-media-node {
+  margin: 0.5rem 0;
+}
+.hm-richtext-content .hm-media-node video,
+.hm-richtext-content .hm-media-node iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* TipTap's own placeholder mechanism (Placeholder extension) — distinct from the
+   :empty:before rule above, which covered the old contentEditable-based editor. */
+.hm-richtext-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.hm-card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.hm-btn-primary {
+  border-radius: 0.5rem;
+  background: var(--color-brand-blue);
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.6rem 1rem;
+}
+.hm-btn-primary:disabled {
+  opacity: 0.6;
+}
+
+.hm-btn-outline {
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--color-text);
+}

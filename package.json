@@ -1,0 +1,44 @@
+{
+  "name": "hamromentor-admin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@tiptap/extension-color": "^3.29.2",
+    "@tiptap/extension-font-family": "^3.29.2",
+    "@tiptap/extension-highlight": "^3.29.2",
+    "@tiptap/extension-image": "^3.29.2",
+    "@tiptap/extension-link": "^3.29.2",
+    "@tiptap/extension-placeholder": "^3.29.2",
+    "@tiptap/extension-subscript": "^3.29.2",
+    "@tiptap/extension-superscript": "^3.29.2",
+    "@tiptap/extension-table": "^3.29.2",
+    "@tiptap/extension-table-cell": "^3.29.2",
+    "@tiptap/extension-table-header": "^3.29.2",
+    "@tiptap/extension-table-row": "^3.29.2",
+    "@tiptap/extension-text-align": "^3.29.2",
+    "@tiptap/extension-text-style": "^3.29.2",
+    "@tiptap/extension-underline": "^3.29.2",
+    "@tiptap/pm": "^3.29.2",
+    "@tiptap/react": "^3.29.2",
+    "@tiptap/starter-kit": "^3.29.2",
+    "fabric": "^7.4.0",
+    "katex": "^0.18.1",
+    "mathlive": "^0.110.0",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tailwindcss": "^4"
+  }
+}

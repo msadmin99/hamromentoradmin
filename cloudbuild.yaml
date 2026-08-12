@@ -1,0 +1,19 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'asia-south1-docker.pkg.dev/hamromentor-app/hamromentor-repo/admin:$COMMIT_SHA', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-south1-docker.pkg.dev/hamromentor-app/hamromentor-repo/admin:$COMMIT_SHA']
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - hamromentor-admin
+      - --image=asia-south1-docker.pkg.dev/hamromentor-app/hamromentor-repo/admin:$COMMIT_SHA
+      - --region=us-central1
+      - --platform=managed
+      - --allow-unauthenticated
+images:
+  - 'asia-south1-docker.pkg.dev/hamromentor-app/hamromentor-repo/admin:$COMMIT_SHA'
+options:
+  logging: CLOUD_LOGGING_ONLY
