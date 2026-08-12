@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
-import QuestionCard, { emptyQuestion } from "@/components/QuestionCard";
+import QuestionCard, { emptyQuestion, IMAGE_REMOVED } from "@/components/QuestionCard";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import { api } from "@/lib/api";
@@ -213,10 +213,11 @@ function QuestionsContent() {
     };
     try {
       await api.patch(`/questions/${editingId}/`, payload);
+      const imageChanged = (v) => v instanceof File || v === IMAGE_REMOVED;
       const hasNewImages =
-        question.image instanceof File ||
-        question.explanation_image instanceof File ||
-        question.options.some((o) => o.image instanceof File);
+        imageChanged(question.image) ||
+        imageChanged(question.explanation_image) ||
+        question.options.some((o) => imageChanged(o.image));
       if (hasNewImages) {
         await uploadQuestionImages(api, editingId, question);
       }

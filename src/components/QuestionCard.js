@@ -85,11 +85,31 @@ export function ImagePicker({ label, value, onChange }) {
  * `categoryValue` and their `onChange`s are kept as separate props (rather
  * than one combined object) so this drops straight into the existing
  * `image`/`image_category` question-state fields. */
+// Sentinel stored in question/option state when the admin removes a
+// *previously-saved* image — distinguishes "explicitly cleared, persist that
+// on save" from "never had one" (plain null/absent), since the save payload
+// otherwise has no way to tell the backend to clear an existing image.
+export const IMAGE_REMOVED = "__REMOVED__";
+
 function QuestionImagePicker({ label, value, onChange, categoryValue, onCategoryChange }) {
-  const hasImage = value instanceof File || (typeof value === "string" && value.length > 0);
+  const isRemoved = value === IMAGE_REMOVED;
+  const hasImage = !isRemoved && (value instanceof File || (typeof value === "string" && value.length > 0));
+
+  function handlePickerChange(next) {
+    // ImagePicker's "Remove" button always calls onChange(null); only turn
+    // that into the persisted-removal sentinel if there was a real
+    // *existing* (saved) image to remove — clearing a not-yet-saved File
+    // pick is a plain no-op, nothing to tell the backend.
+    if (next === null && typeof value === "string" && value.length > 0) {
+      onChange(IMAGE_REMOVED);
+    } else {
+      onChange(next);
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ImagePicker label={label} value={value} onChange={onChange} />
+      <ImagePicker label={label} value={isRemoved ? null : value} onChange={handlePickerChange} />
       {hasImage && (
         <select
           value={categoryValue || "other"}

@@ -1,4 +1,5 @@
 import { apiFetch, uploadFields } from "./api";
+import { IMAGE_REMOVED } from "@/components/QuestionCard";
 
 /**
  * Uploads a File through the validated/deduped/optimized media pipeline
@@ -23,10 +24,11 @@ export async function uploadAndProcessImage(file, imageType, category = "other")
 
 /**
  * Given a question-form object (image/explanation_image/options[].image
- * possibly holding raw File objects picked via ImagePicker), uploads each
- * File through the media pipeline and PATCHes the resulting MediaAsset ids
- * onto the question via /questions/<id>/upload_images/. Fields that are
- * already a URL string (existing image, unchanged) or null are skipped.
+ * possibly holding raw File objects picked via ImagePicker, the IMAGE_REMOVED
+ * sentinel for an explicitly-cleared existing image, or an unchanged URL
+ * string/null), uploads each File through the media pipeline and PATCHes the
+ * resulting MediaAsset ids (or clear flags) onto the question via
+ * /questions/<id>/upload_images/. Unchanged fields are skipped entirely.
  */
 export async function uploadQuestionImages(api, questionId, questionForm) {
   const patchFields = {};
@@ -34,18 +36,26 @@ export async function uploadQuestionImages(api, questionId, questionForm) {
   if (questionForm.image instanceof File) {
     const asset = await uploadAndProcessImage(questionForm.image, "question_image", questionForm.image_category || "other");
     patchFields.image_asset_id = asset.id;
+  } else if (questionForm.image === IMAGE_REMOVED) {
+    patchFields.clear_image = true;
   }
+
   if (questionForm.explanation_image instanceof File) {
     const asset = await uploadAndProcessImage(
       questionForm.explanation_image, "explanation_image", questionForm.explanation_image_category || "other",
     );
     patchFields.explanation_image_asset_id = asset.id;
+  } else if (questionForm.explanation_image === IMAGE_REMOVED) {
+    patchFields.clear_explanation_image = true;
   }
+
   for (let i = 0; i < (questionForm.options || []).length; i++) {
     const opt = questionForm.options[i];
     if (opt.image instanceof File) {
       const asset = await uploadAndProcessImage(opt.image, "option_image", opt.image_category || "other");
       patchFields[`option_image_asset_id_${i}`] = asset.id;
+    } else if (opt.image === IMAGE_REMOVED) {
+      patchFields[`clear_option_image_${i}`] = true;
     }
   }
 
