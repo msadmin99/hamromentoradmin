@@ -91,6 +91,7 @@ function emptyForm(examType) {
     subject: "",
     courses: [],
     academic_year: "2025-26",
+    university: "",
     scheduled_start: "",
     scheduled_end: "",
     duration_minutes: 60,
@@ -187,6 +188,7 @@ function ExamManagementContent() {
       subject: full.subject || "",
       courses: full.courses || [],
       academic_year: full.academic_year || "",
+      university: full.university || "",
       scheduled_start: full.scheduled_start ? full.scheduled_start.slice(0, 16) : "",
       scheduled_end: full.scheduled_end ? full.scheduled_end.slice(0, 16) : "",
       duration_minutes: full.duration_minutes,
@@ -212,6 +214,10 @@ function ExamManagementContent() {
       setError("Title is required.");
       return;
     }
+    if (form.exam_type === "pyq" && (!form.academic_year.trim() || !form.university.trim())) {
+      setError('University and Academic year are both required for "Past Year Questions" — students browse these exams by university, then year.');
+      return;
+    }
     setError("");
     setSaving(true);
     const payload = {
@@ -222,6 +228,7 @@ function ExamManagementContent() {
       subject: form.subject || null,
       courses: form.courses,
       academic_year: form.academic_year,
+      university: form.university,
       scheduled_start: form.scheduled_start || null,
       scheduled_end: form.scheduled_end || null,
       duration_minutes: Number(form.duration_minutes),
@@ -329,13 +336,29 @@ function ExamManagementContent() {
             <CoursePicker courses={courses} selected={form.courses} onChange={(v) => setForm((f) => ({ ...f, courses: v }))} />
           </div>
 
+          {form.exam_type === "pyq" && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+                University <span className="text-brand-red">* required for Past Year Questions</span>
+              </label>
+              <input
+                value={form.university}
+                onChange={(e) => setForm((f) => ({ ...f, university: e.target.value }))}
+                placeholder="e.g. IOM, MOE, BPKIHS, KU"
+                className={`hm-input ${!form.university.trim() ? "border-brand-red" : ""}`}
+              />
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Academic year</label>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+                Academic year{form.exam_type === "pyq" && <span className="text-brand-red"> *</span>}
+              </label>
               <input
                 value={form.academic_year}
                 onChange={(e) => setForm((f) => ({ ...f, academic_year: e.target.value }))}
-                className="hm-input"
+                className={`hm-input ${form.exam_type === "pyq" && !form.academic_year.trim() ? "border-brand-red" : ""}`}
               />
             </div>
             <div>

@@ -30,6 +30,7 @@ function defaultConfig(batch) {
     exam_type: "mock",
     courses: batch.course_ids || [],
     academic_year: "",
+    university: "",
     scheduled_start: "",
     scheduled_end: "",
     duration_minutes: 60,
@@ -64,10 +65,14 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
     }
     if (form.exam_type === "pyq" && !form.academic_year.trim()) {
       // Past Year Question sets are only discoverable via /past-year-questions,
-      // which lists them by academic_year — without one, a PYQ test is created
-      // successfully and shows up in Exam Management, but is permanently
-      // invisible to students (no year to click into). Catch it here instead.
+      // which lists them by university then academic_year — without one, a PYQ
+      // test is created successfully and shows up in Exam Management, but is
+      // permanently invisible to students (no year to click into). Catch it here.
       setError('Academic year is required for "Past Year Questions" — students find these exams by year.');
+      return;
+    }
+    if (form.exam_type === "pyq" && !form.university.trim()) {
+      setError('University is required for "Past Year Questions" — students find these exams by university first.');
       return;
     }
     setError("");
@@ -156,6 +161,24 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
             </label>
             <CoursePicker courses={courses} selected={form.courses} onChange={(v) => setForm((f) => ({ ...f, courses: v }))} />
           </div>
+
+          {form.exam_type === "pyq" && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+                University <span className="text-brand-red">* required for Past Year Questions</span>
+              </label>
+              <input
+                value={form.university}
+                onChange={(e) => setForm((f) => ({ ...f, university: e.target.value }))}
+                placeholder="e.g. IOM, MOE, BPKIHS, KU"
+                className={`hm-input ${!form.university.trim() ? "border-brand-red" : ""}`}
+              />
+              <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                Students browse Past Year Questions by university first, then year — without this, the exam
+                won&apos;t appear on the student site.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div>
