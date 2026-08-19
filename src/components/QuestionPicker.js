@@ -8,6 +8,12 @@ const PAGE_SIZES = [5, 10, 25, 50, 100];
 
 export default function QuestionPicker({ subjects, initialQuestions = [], onCancel, onInsert }) {
   const [subjectFilter, setSubjectFilter] = useState("");
+  // Naming matches the rest of Admin's cascading pickers (e.g. questions/new):
+  // the Chapter model is shown to admins as "Unit", the Topic model as "Chapter".
+  const [unitFilter, setUnitFilter] = useState("");
+  const [chapterFilter, setChapterFilter] = useState("");
+  const [units, setUnits] = useState([]);
+  const [chapters, setChapters] = useState([]);
   const [search, setSearch] = useState("");
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +25,8 @@ export default function QuestionPicker({ subjects, initialQuestions = [], onCanc
     setLoading(true);
     const params = new URLSearchParams();
     if (subjectFilter) params.set("subject", subjectFilter);
+    if (unitFilter) params.set("chapter", unitFilter);
+    if (chapterFilter) params.set("topic", chapterFilter);
     if (search) params.set("search", search);
     api
       .get(`/questions/?${params.toString()}`)
@@ -33,7 +41,28 @@ export default function QuestionPicker({ subjects, initialQuestions = [], onCanc
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectFilter, search]);
+  }, [subjectFilter, unitFilter, chapterFilter, search]);
+
+  useEffect(() => {
+    setUnitFilter("");
+    setChapterFilter("");
+    setChapters([]);
+    if (!subjectFilter) {
+      setUnits([]);
+      return;
+    }
+    api.get(`/chapters/?subject=${subjectFilter}`).then(setUnits);
+  }, [subjectFilter]);
+
+  useEffect(() => {
+    setChapterFilter("");
+    if (!unitFilter) {
+      setChapters([]);
+      return;
+    }
+    const unit = units.find((u) => String(u.id) === unitFilter);
+    setChapters(unit?.topics || []);
+  }, [unitFilter, units]);
 
   const totalPages = Math.max(1, Math.ceil(questions.length / pageSize));
   const pageItems = useMemo(
@@ -82,11 +111,37 @@ export default function QuestionPicker({ subjects, initialQuestions = [], onCanc
             placeholder="Search questions…"
             className="hm-input w-64"
           />
-          <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} className="hm-input w-56">
+          <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} className="hm-input w-48">
             <option value="">All subjects</option>
             {subjects.map((s) => (
               <option key={s.id} value={s.slug}>
                 {s.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={unitFilter}
+            onChange={(e) => setUnitFilter(e.target.value)}
+            disabled={!subjectFilter}
+            className="hm-input w-48 disabled:opacity-50"
+          >
+            <option value="">All units</option>
+            {units.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={chapterFilter}
+            onChange={(e) => setChapterFilter(e.target.value)}
+            disabled={!unitFilter}
+            className="hm-input w-48 disabled:opacity-50"
+          >
+            <option value="">All chapters</option>
+            {chapters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
