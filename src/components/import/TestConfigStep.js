@@ -62,6 +62,14 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
       setError("Title is required.");
       return;
     }
+    if (form.exam_type === "pyq" && !form.academic_year.trim()) {
+      // Past Year Question sets are only discoverable via /past-year-questions,
+      // which lists them by academic_year — without one, a PYQ test is created
+      // successfully and shows up in Exam Management, but is permanently
+      // invisible to students (no year to click into). Catch it here instead.
+      setError('Academic year is required for "Past Year Questions" — students find these exams by year.');
+      return;
+    }
     setError("");
     onContinue({
       ...form,
@@ -151,13 +159,20 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Academic year</label>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+                Academic year{form.exam_type === "pyq" && <span className="text-brand-red"> * required for Past Year Questions</span>}
+              </label>
               <input
                 value={form.academic_year}
                 onChange={(e) => setForm((f) => ({ ...f, academic_year: e.target.value }))}
                 placeholder="e.g. 2025-26"
-                className="hm-input"
+                className={`hm-input ${form.exam_type === "pyq" && !form.academic_year.trim() ? "border-brand-red" : ""}`}
               />
+              {form.exam_type === "pyq" && (
+                <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                  Students find Past Year Question sets by year — without this, the exam won&apos;t appear on the student site.
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled start (optional)</label>
