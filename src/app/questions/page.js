@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import Modal from "@/components/Modal";
 import QuestionCard, { emptyQuestion, IMAGE_REMOVED } from "@/components/QuestionCard";
 import RequireStaff from "@/components/RequireStaff";
@@ -31,6 +32,7 @@ function QuestionsContent() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { type: "single", id } | { type: "bulk", ids }
 
   const [editCourses, setEditCourses] = useState([]);
   const [editSubject, setEditSubject] = useState("");
@@ -109,18 +111,29 @@ function QuestionsContent() {
     setSelectedIds((prev) => (prev.size === questions.length ? new Set() : new Set(questions.map((q) => q.id))));
   }
 
-  async function applyBulkAction() {
+  function applyBulkAction() {
     if (!bulkAction || selectedIds.size === 0) return;
     if (bulkAction === "delete") {
-      if (!confirm(`Delete ${selectedIds.size} selected question(s)? This can't be undone.`)) return;
-      setBulkRunning(true);
-      try {
-        await Promise.all(Array.from(selectedIds).map((id) => api.del(`/questions/${id}/`)));
-        loadQuestions();
-      } finally {
-        setBulkRunning(false);
-        setBulkAction("");
+      setDeleteTarget({ type: "bulk", ids: Array.from(selectedIds) });
+    }
+  }
+
+  async function runBulkDelete(ids) {
+    setBulkRunning(true);
+    try {
+      // Each /questions/{id}/ DELETE is independently guarded (in-use/attempt
+      // checks) and audit-logged server-side — a question blocked by one of
+      // those guards fails on its own without stopping the rest of the batch.
+      const results = await Promise.allSettled(ids.map((id) => api.del(`/questions/${id}/`)));
+      const failed = results.filter((r) => r.status === "rejected");
+      loadQuestions();
+      setSelectedIds(new Set());
+      setBulkAction("");
+      if (failed.length > 0) {
+        throw new Error(`${ids.length - failed.length} of ${ids.length} deleted. ${failed.length} were blocked (e.g. in-use questions) — see the list for details.`);
       }
+    } finally {
+      setBulkRunning(false);
     }
   }
 
@@ -230,8 +243,11 @@ function QuestionsContent() {
     }
   }
 
-  async function deleteQuestion(id) {
-    if (!confirm("Delete this question?")) return;
+  function deleteQuestion(id) {
+    setDeleteTarget({ type: "single", id });
+  }
+
+  async function runSingleDelete(id) {
     await api.del(`/questions/${id}/`);
     loadQuestions();
   }
@@ -461,6 +477,23 @@ function QuestionsContent() {
             </button>
           </form>
         </Modal>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          itemLabel={deleteTarget.type === "bulk" ? `${deleteTarget.ids.length} selected question(s)` : "this question"}
+          requireTyped={deleteTarget.type === "bulk" && deleteTarget.ids.length > 1}
+          consequences={[
+            "Removes its options, explanation, and uploaded images.",
+            "Blocked automatically if it has practice-attempt history or is used in an exam students have already taken.",
+          ]}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            if (deleteTarget.type === "bulk") await runBulkDelete(deleteTarget.ids);
+            else await runSingleDelete(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import Modal from "@/components/Modal";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
@@ -82,6 +83,7 @@ function AccountsContent() {
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   function load() {
     api.get("/auth/admin-accounts/").then(setAccounts);
@@ -121,8 +123,11 @@ function AccountsContent() {
     load();
   }
 
-  async function deleteAccount(id) {
-    if (!confirm("Delete this admin account?")) return;
+  function deleteAccount(account) {
+    setDeleteTarget(account);
+  }
+
+  async function runDeleteAccount(id) {
     await api.del(`/auth/admin-accounts/${id}/`);
     load();
   }
@@ -204,7 +209,7 @@ function AccountsContent() {
                 </td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{new Date(a.date_joined).toLocaleDateString()}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => deleteAccount(a.id)} className="text-brand-red">
+                  <button onClick={() => deleteAccount(a)} className="text-brand-red">
                     🗑
                   </button>
                 </td>
@@ -277,6 +282,22 @@ function AccountsContent() {
             </button>
           </form>
         </Modal>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          itemLabel={`${deleteTarget.name} (${deleteTarget.email})`}
+          requireTyped
+          consequences={[
+            "Removes this admin panel account and its login access.",
+            "Blocked automatically if this teacher has taught courses or purchases on record.",
+          ]}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            await runDeleteAccount(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
       )}
     </div>
   );

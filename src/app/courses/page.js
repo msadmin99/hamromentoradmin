@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import Modal from "@/components/Modal";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
@@ -29,6 +30,8 @@ function CoursesContent() {
   const [packageCourse, setPackageCourse] = useState(null);
   const [packageForm, setPackageForm] = useState(emptyPackageForm());
   const [packageError, setPackageError] = useState("");
+  const [deleteCourseTarget, setDeleteCourseTarget] = useState(null);
+  const [deletePackageTarget, setDeletePackageTarget] = useState(null);
 
   function load() {
     setLoading(true);
@@ -83,8 +86,11 @@ function CoursesContent() {
     }
   }
 
-  async function deleteCourse(id) {
-    if (!confirm("Delete this course? Enrollments and packages under it will be removed too.")) return;
+  function deleteCourse(course) {
+    setDeleteCourseTarget(course);
+  }
+
+  async function runDeleteCourse(id) {
     await api.del(`/courses/${id}/`);
     load();
   }
@@ -107,8 +113,11 @@ function CoursesContent() {
     }
   }
 
-  async function deletePackage(id) {
-    if (!confirm("Delete this package?")) return;
+  function deletePackage(pkg) {
+    setDeletePackageTarget(pkg);
+  }
+
+  async function runDeletePackage(id) {
     await api.del(`/course-packages/${id}/`);
     load();
     const updated = await api.get(`/courses/${packageCourse.id}/`).catch(() => null);
@@ -184,7 +193,7 @@ function CoursesContent() {
                       <button onClick={() => openEdit(c)} className="mr-3 text-xs font-semibold text-brand-blue">
                         Edit
                       </button>
-                      <button onClick={() => deleteCourse(c.id)} className="text-xs font-semibold text-brand-red">
+                      <button onClick={() => deleteCourse(c)} className="text-xs font-semibold text-brand-red">
                         Delete
                       </button>
                     </td>
@@ -311,7 +320,7 @@ function CoursesContent() {
                   </p>
                 </div>
                 {isSuperAdmin && (
-                  <button onClick={() => deletePackage(p.id)} className="text-xs font-semibold text-brand-red">
+                  <button onClick={() => deletePackage(p)} className="text-xs font-semibold text-brand-red">
                     Delete
                   </button>
                 )}
@@ -360,6 +369,34 @@ function CoursesContent() {
             </p>
           )}
         </Modal>
+      )}
+
+      {deleteCourseTarget && (
+        <ConfirmDeleteModal
+          itemLabel={deleteCourseTarget.name}
+          requireTyped
+          consequences={[
+            "Removes the course itself along with its packages.",
+            "Blocked automatically if any student is enrolled or subscribed to it.",
+          ]}
+          onCancel={() => setDeleteCourseTarget(null)}
+          onConfirm={async () => {
+            await runDeleteCourse(deleteCourseTarget.id);
+            setDeleteCourseTarget(null);
+          }}
+        />
+      )}
+
+      {deletePackageTarget && (
+        <ConfirmDeleteModal
+          itemLabel={deletePackageTarget.name}
+          consequences={["Students already on this package keep their access; only new purchases are affected."]}
+          onCancel={() => setDeletePackageTarget(null)}
+          onConfirm={async () => {
+            await runDeletePackage(deletePackageTarget.id);
+            setDeletePackageTarget(null);
+          }}
+        />
       )}
     </div>
   );

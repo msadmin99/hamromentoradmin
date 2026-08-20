@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import { api } from "@/lib/api";
@@ -26,6 +27,7 @@ function MarketplaceCoursesContent() {
   const [tab, setTab] = useState("");
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   function load() {
     setLoading(true);
@@ -48,6 +50,11 @@ function MarketplaceCoursesContent() {
     const reason = prompt("Reason for rejection (shown to the teacher):");
     if (reason === null) return;
     await api.post(`/teacher-courses/${course.id}/reject/`, { reason });
+    load();
+  }
+
+  async function runDeleteCourse(id) {
+    await api.del(`/teacher-courses/${id}/`);
     load();
   }
 
@@ -111,6 +118,15 @@ function MarketplaceCoursesContent() {
                     </button>
                   </span>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget(c);
+                  }}
+                  className="flex-none text-xs font-semibold text-brand-red"
+                >
+                  Delete
+                </button>
               </button>
               {expandedId === c.id && (
                 <div className="bg-[var(--color-surface-muted)] px-4 py-3 text-xs text-[var(--color-text-muted)]">
@@ -138,6 +154,22 @@ function MarketplaceCoursesContent() {
           ))}
         {!loading && courses.length === 0 && <p className="p-4 text-center text-sm text-[var(--color-text-muted)]">No courses found.</p>}
       </div>
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          itemLabel={deleteTarget.title}
+          requireTyped
+          consequences={[
+            "Removes the course, its sections, and its lessons.",
+            "Blocked automatically if any student is enrolled in it.",
+          ]}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            await runDeleteCourse(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
