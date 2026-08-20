@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import RichEditor from "@/components/richeditor/RichEditor";
 import { api } from "@/lib/api";
 
 const STATUS_STYLES = {
@@ -167,17 +168,46 @@ function TaxonomyPanel({ batch, onChanged }) {
   );
 }
 
-function RowDetail({ row, onSave }) {
-  const [text, setText] = useState(stripTags(row.data.text_html));
+function RowDetail({ row, onSave, onDelete }) {
+  const [data, setData] = useState(row.data);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  function update(patch) {
+    setData((d) => ({ ...d, ...patch }));
+  }
+  function updateOption(i, patch) {
+    update({ options: (data.options || []).map((o, idx) => (idx === i ? { ...o, ...patch } : o)) });
+  }
+  function toggleCorrect(i) {
+    update({ options: (data.options || []).map((o, idx) => (idx === i ? { ...o, is_correct: !o.is_correct } : o)) });
+  }
+  function addOption() {
+    update({ options: [...(data.options || []), { text_html: "", is_correct: false }] });
+  }
+  function removeOption(i) {
+    update({ options: (data.options || []).filter((_, idx) => idx !== i) });
+  }
 
   async function save() {
     setSaving(true);
     try {
-      const updated = { ...row.data, text_html: `<p>${text}</p>` };
-      await onSave(row.id, { data: updated });
+      await onSave(row.id, { data });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Remove this question from the import? This can't be undone — you'd need to re-upload the file to get it back.")) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await onDelete(row.id);
+    } catch (err) {
+      setDeleteError(err.message || "Could not remove this question.");
+      setDeleting(false);
     }
   }
 
@@ -198,18 +228,60 @@ function RowDetail({ row, onSave }) {
         </ul>
       )}
 
-      <label className="mb-1 block text-[11px] font-semibold text-[var(--color-text-muted)]">Question text</label>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} className="hm-input w-full text-sm" />
+      <label className="mb-1 block text-[11px] font-semibold text-[var(--color-text-muted)]">Question</label>
+      <RichEditor value={data.text_html} onChange={(html) => update({ text_html: html })} placeholder="Question text" minHeight={70} />
 
-      <div className="mt-2 flex flex-wrap gap-2">
-        {row.data.options?.map((o, i) => (
-          <span
+      <p className="mb-1.5 mt-3 text-[11px] font-semibold text-[var(--color-text-muted)]">
+        Options — click the letter to mark correct (multiple allowed)
+      </p>
+      <div className="flex flex-col gap-2">
+        {(data.options || []).map((o, i) => (
+          <div
             key={i}
-            className={`rounded-md px-2 py-1 text-[11px] ${o.is_correct ? "bg-brand-green-light text-brand-green font-semibold" : "bg-white text-[var(--color-text-muted)]"}`}
+            className={`rounded-lg border p-2 ${o.is_correct ? "border-brand-green bg-brand-green-light" : "border-[var(--color-border)] bg-white"}`}
           >
-            {stripTags(o.text_html) || "(blank)"}
-          </span>
+            <div className="flex items-start gap-2">
+              <button
+                type="button"
+                onClick={() => toggleCorrect(i)}
+                className={`mt-1 flex h-6 w-6 flex-none items-center justify-center rounded-full text-xs font-bold ${
+                  o.is_correct ? "bg-brand-green text-white" : "border border-[var(--color-border)] text-[var(--color-text-muted)]"
+                }`}
+              >
+                {String.fromCharCode(65 + i)}
+              </button>
+              <div className="min-w-0 flex-1">
+                <RichEditor
+                  value={o.text_html}
+                  onChange={(html) => updateOption(i, { text_html: html })}
+                  placeholder={`Option ${i + 1}`}
+                  minHeight={44}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeOption(i)}
+                title="Remove this option"
+                className="mt-1 flex-none text-xs font-semibold text-brand-red"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         ))}
+      </div>
+      <button type="button" onClick={addOption} className="hm-btn-outline mt-2 px-3 py-1 text-[11px]">
+        + Add option
+      </button>
+
+      <div className="mt-4 rounded-lg bg-white p-3">
+        <label className="mb-1.5 block text-[11px] font-semibold text-[var(--color-text-muted)]">Explanation (optional)</label>
+        <RichEditor
+          value={data.explanation_html}
+          onChange={(html) => update({ explanation_html: html })}
+          placeholder="Explanation — shown to students after they attempt this question"
+          minHeight={70}
+        />
       </div>
 
       {row.status === "duplicate" && (
@@ -229,9 +301,16 @@ function RowDetail({ row, onSave }) {
         </div>
       )}
 
-      <button onClick={save} disabled={saving} className="hm-btn-outline mt-3 px-3 py-1 text-[11px]">
-        {saving ? "Saving…" : "Save edit"}
-      </button>
+      {deleteError && <p className="mt-2 text-[11px] font-medium text-brand-red">{deleteError}</p>}
+
+      <div className="mt-3 flex items-center justify-between">
+        <button type="button" onClick={handleDelete} disabled={deleting} className="text-xs font-semibold text-brand-red disabled:opacity-50">
+          {deleting ? "Removing…" : "🗑 Remove this question"}
+        </button>
+        <button onClick={save} disabled={saving} className="hm-btn-outline px-3 py-1 text-[11px]">
+          {saving ? "Saving…" : "Save edit"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -270,6 +349,19 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
   async function saveRow(rowId, payload) {
     const updated = await api.patch(`/import-batches/${batch.id}/rows/${rowId}/`, payload);
     setRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, ...updated } : r)));
+    // Editing a row's data can flip its status (e.g. error -> valid once a
+    // missing option is added back), which the Valid/Warning/Error counts
+    // and the Import button's enabled state above depend on — refresh them.
+    const updatedBatch = await api.get(`/import-batches/${batch.id}/status/`);
+    setBatch(updatedBatch);
+  }
+
+  async function deleteRow(rowId) {
+    const updatedBatch = await api.del(`/import-batches/${batch.id}/rows/${rowId}/`);
+    setBatch(updatedBatch);
+    setRows((prev) => prev.filter((r) => r.id !== rowId));
+    setTotal((prev) => Math.max(0, prev - 1));
+    setExpandedId((prev) => (prev === rowId ? null : prev));
   }
 
   function handleTaxonomyChanged(updatedBatch) {
@@ -366,7 +458,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
                 <span className="flex-1 truncate text-sm text-[var(--color-text)]">{stripTags(row.data.text_html) || "(blank question)"}</span>
                 <span className="flex-none text-[var(--color-text-muted)]">{expandedId === row.id ? "▲" : "▼"}</span>
               </button>
-              {expandedId === row.id && <RowDetail row={row} onSave={saveRow} />}
+              {expandedId === row.id && <RowDetail row={row} onSave={saveRow} onDelete={deleteRow} />}
             </div>
           ))}
         {!loading && rows.length === 0 && <p className="p-4 text-center text-sm text-[var(--color-text-muted)]">No rows match this filter.</p>}
