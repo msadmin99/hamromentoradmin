@@ -34,8 +34,13 @@ function ImportContent() {
   }
 
   function handlePreviewContinue(updatedBatch) {
+    const nextBatch = updatedBatch || batch;
     if (updatedBatch) setBatch(updatedBatch);
-    if (importMode === "create_test") {
+    // Route off the batch's own recorded import_mode, not the "Import Type"
+    // selector state — the selector can only ever be right at the moment a
+    // NEW upload starts; once a batch exists, what the server actually
+    // stored for it is the only thing that can't drift out of sync.
+    if (nextBatch.import_mode === "create_test") {
       setStep("test_config");
     } else {
       setStep("progress");
@@ -79,8 +84,13 @@ function ImportContent() {
     setStep("upload");
   }
 
-  const stepKeys = importMode === "create_test" ? CREATE_TEST_STEPS : QUESTION_BANK_STEPS;
-  const stepLabels = importMode === "create_test" ? CREATE_TEST_LABELS : QUESTION_BANK_LABELS;
+  // Once a batch exists, its own import_mode (what the server actually
+  // recorded at upload) drives which step flow is shown — never the
+  // "Import Type" selector state, which is only meaningful pre-upload and
+  // must not silently relabel an existing batch's flow.
+  const effectiveMode = batch ? batch.import_mode : importMode;
+  const stepKeys = effectiveMode === "create_test" ? CREATE_TEST_STEPS : QUESTION_BANK_STEPS;
+  const stepLabels = effectiveMode === "create_test" ? CREATE_TEST_LABELS : QUESTION_BANK_LABELS;
   const currentIndex = stepKeys.indexOf(step);
 
   return (
@@ -166,7 +176,7 @@ function ImportContent() {
         {step === "preview" && batch && (
           <PreviewStep
             batch={batch}
-            mode={importMode}
+            mode={effectiveMode}
             highlightRowNumber={highlightRowNumber}
             onConfirmed={handlePreviewContinue}
             onCancel={startOver}
