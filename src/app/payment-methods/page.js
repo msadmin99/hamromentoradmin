@@ -7,8 +7,20 @@ import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import { api, uploadFields } from "@/lib/api";
 
+const PROVIDER_TYPES = [
+  { key: "fonepay", label: "Fonepay" },
+  { key: "khalti", label: "Khalti" },
+  { key: "esewa", label: "eSewa" },
+  { key: "connectips", label: "connectIPS" },
+  { key: "bank_qr", label: "Bank QR" },
+  { key: "other", label: "Other" },
+];
+
 function emptyForm() {
-  return { name: "", instructions: "", qr_code_image: null, is_active: true, order: 0 };
+  return {
+    name: "", provider_type: "other", merchant_name: "", merchant_id: "", account_info: "",
+    instructions: "", qr_code_image: null, is_active: true, order: 0,
+  };
 }
 
 function PaymentMethodsContent() {
@@ -36,6 +48,10 @@ function PaymentMethodsContent() {
     setEditingId(m.id);
     setForm({
       name: m.name,
+      provider_type: m.provider_type || "other",
+      merchant_name: m.merchant_name || "",
+      merchant_id: m.merchant_id || "",
+      account_info: m.account_info || "",
       instructions: m.instructions,
       qr_code_image: m.qr_code_image,
       is_active: m.is_active,
@@ -51,6 +67,10 @@ function PaymentMethodsContent() {
     setSaving(true);
     const fields = {
       name: form.name,
+      provider_type: form.provider_type,
+      merchant_name: form.merchant_name,
+      merchant_id: form.merchant_id,
+      account_info: form.account_info,
       instructions: form.instructions,
       is_active: form.is_active,
       order: form.order,
@@ -102,6 +122,11 @@ function PaymentMethodsContent() {
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-[var(--color-text)]">
                 {m.name}
+                {m.provider_type && (
+                  <span className="ml-2 rounded-md bg-brand-blue/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-blue">
+                    {PROVIDER_TYPES.find((p) => p.key === m.provider_type)?.label || m.provider_type}
+                  </span>
+                )}
                 {!m.is_active && (
                   <span className="ml-2 rounded-md bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--color-text-muted)]">
                     INACTIVE
@@ -138,6 +163,49 @@ function PaymentMethodsContent() {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 className="hm-input"
                 placeholder="e.g. Fonepay"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Provider</label>
+              <select
+                value={form.provider_type}
+                onChange={(e) => setForm((f) => ({ ...f, provider_type: e.target.value }))}
+                className="hm-input"
+              >
+                {PROVIDER_TYPES.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Merchant name</label>
+                <input
+                  value={form.merchant_name}
+                  onChange={(e) => setForm((f) => ({ ...f, merchant_name: e.target.value }))}
+                  className="hm-input"
+                  placeholder="e.g. Dr. Gutka Pvt. Ltd."
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Merchant ID</label>
+                <input
+                  value={form.merchant_id}
+                  onChange={(e) => setForm((f) => ({ ...f, merchant_id: e.target.value }))}
+                  className="hm-input"
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Account info</label>
+              <input
+                value={form.account_info}
+                onChange={(e) => setForm((f) => ({ ...f, account_info: e.target.value }))}
+                className="hm-input"
+                placeholder="Bank/account number, shown alongside the QR — optional"
               />
             </div>
             <div>

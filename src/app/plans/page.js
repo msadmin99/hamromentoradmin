@@ -11,6 +11,7 @@ const PRODUCT_TABS = [
   { key: "daily_test", label: "Daily Test" },
   { key: "mock_test", label: "Mock Test" },
   { key: "video", label: "Video Lectures" },
+  { key: "pyq", label: "Past Year Questions" },
 ];
 
 const DURATION_UNITS = [
