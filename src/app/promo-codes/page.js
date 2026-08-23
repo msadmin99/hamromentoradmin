@@ -12,6 +12,7 @@ const APPLIES_TO = [
   { key: "daily_test", label: "Daily Test Subscription" },
   { key: "mock_test", label: "Mock Test Package" },
   { key: "grand_test", label: "Grand Test" },
+  { key: "pyq", label: "Past Year Questions Subscription" },
 ];
 
 const DISCOUNT_TYPES = [
@@ -33,7 +34,7 @@ const ELIGIBILITY = [
 
 function emptyForm() {
   return {
-    code: "", name: "", course: "", discount_type: "percentage", discount_value: 10, applies_to: "all",
+    code: "", name: "", courseIds: [], discount_type: "percentage", discount_value: 10, applies_to: "all",
     start_date: "", expiry_date: "", max_uses: "", max_uses_per_user: 1,
     min_purchase_amount: "", max_discount_amount: "", first_purchase_only: false,
     eligibility: "everyone", eligible_emails: "", new_student_days: 30, auto_apply: false, is_active: true,
@@ -75,10 +76,18 @@ function PromoCodesContent() {
     setShowForm(true);
   }
 
+  function toggleCourseId(id) {
+    const key = String(id);
+    setForm((f) => ({
+      ...f,
+      courseIds: f.courseIds.includes(key) ? f.courseIds.filter((c) => c !== key) : [...f.courseIds, key],
+    }));
+  }
+
   function openEdit(c) {
     setEditingId(c.id);
     setForm({
-      code: c.code, name: c.name || "", course: c.course ?? "", discount_type: c.discount_type,
+      code: c.code, name: c.name || "", courseIds: (c.courses || []).map(String), discount_type: c.discount_type,
       discount_value: c.discount_value, applies_to: c.applies_to,
       start_date: c.start_date || "", expiry_date: c.expiry_date || "",
       max_uses: c.max_uses ?? "", max_uses_per_user: c.max_uses_per_user,
@@ -96,10 +105,11 @@ function PromoCodesContent() {
     setError("");
     setSaving(true);
     const isFree = FREE_DISCOUNT_TYPES.includes(form.discount_type);
+    const { courseIds, ...rest } = form;
     const payload = {
-      ...form,
+      ...rest,
       code: form.code.toUpperCase().trim(),
-      course: form.course || null,
+      courses: courseIds.map(Number),
       discount_value: isFree ? 0 : Number(form.discount_value),
       max_uses: form.max_uses === "" ? null : Number(form.max_uses),
       max_uses_per_user: Number(form.max_uses_per_user),
@@ -178,7 +188,7 @@ function PromoCodesContent() {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-xs">{c.course_name || "All courses"}</td>
+                <td className="px-4 py-3 text-xs">{(c.course_names || []).join(", ") || "All courses"}</td>
                 <td className="px-4 py-3 text-xs">{APPLIES_TO.find((a) => a.key === c.applies_to)?.label}</td>
                 <td className="px-4 py-3 text-xs">{ELIGIBILITY.find((e) => e.key === c.eligibility)?.label}</td>
                 <td className="px-4 py-3">
@@ -235,36 +245,61 @@ function PromoCodesContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Course</label>
-                <select value={form.course} onChange={(e) => setForm((f) => ({ ...f, course: e.target.value }))} className="hm-input">
-                  <option value="">All courses</option>
-                  {Object.entries(coursesByGroup).map(([group, list]) => (
-                    <optgroup key={group} label={group}>
-                      {list.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Applies to (exam type)</label>
-                <select
-                  value={form.applies_to}
-                  onChange={(e) => setForm((f) => ({ ...f, applies_to: e.target.value }))}
-                  className="hm-input"
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-xs font-semibold text-[var(--color-text-muted)]">Course (blank = all courses)</label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      courseIds: f.courseIds.length === courses.length ? [] : courses.map((c) => String(c.id)),
+                    }))
+                  }
+                  className="text-[11px] font-semibold text-brand-blue"
                 >
-                  {APPLIES_TO.map((a) => (
-                    <option key={a.key} value={a.key}>
-                      {a.label}
-                    </option>
-                  ))}
-                </select>
+                  {form.courseIds.length === courses.length ? "Deselect all" : "Select all"}
+                </button>
               </div>
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-[var(--color-border)] p-3">
+                {Object.entries(coursesByGroup).map(([group, list]) => (
+                  <div key={group} className="mb-2 last:mb-0">
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-muted)]">{group}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {list.map((c) => (
+                        <label key={c.id} className="flex items-center gap-1.5 text-xs text-[var(--color-text)]">
+                          <input
+                            type="checkbox"
+                            checked={form.courseIds.includes(String(c.id))}
+                            onChange={() => toggleCourseId(c.id)}
+                          />
+                          {c.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+                {form.courseIds.length === 0
+                  ? "Applies to all courses"
+                  : `Applies to ${form.courseIds.length} selected course${form.courseIds.length > 1 ? "s" : ""}`}
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Applies to (exam type)</label>
+              <select
+                value={form.applies_to}
+                onChange={(e) => setForm((f) => ({ ...f, applies_to: e.target.value }))}
+                className="hm-input"
+              >
+                {APPLIES_TO.map((a) => (
+                  <option key={a.key} value={a.key}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
