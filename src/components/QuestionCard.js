@@ -33,6 +33,26 @@ export function emptyOption() {
   return { text: "", latex: "", image: null, image_category: "other", is_correct: false };
 }
 
+// Independent of actual_difficulty (computed from real student performance,
+// read-only — see the Smart Question Bank dashboard's difficulty analytics).
+const DIFFICULTY_OPTIONS = [
+  { key: "", label: "Not set" },
+  { key: "easy", label: "Easy" },
+  { key: "medium", label: "Medium" },
+  { key: "hard", label: "Hard" },
+  { key: "very_hard", label: "Very Hard" },
+];
+
+const QUESTION_TYPE_OPTIONS = [
+  { key: "", label: "Not set" },
+  { key: "conceptual", label: "Conceptual" },
+  { key: "recall", label: "Recall" },
+  { key: "clinical", label: "Clinical" },
+  { key: "numerical", label: "Numerical" },
+  { key: "image_based", label: "Image-based" },
+  { key: "other", label: "Other" },
+];
+
 export function emptyQuestion() {
   return {
     marks: 1,
@@ -50,6 +70,9 @@ export function emptyQuestion() {
     references: [],
     remarks: "",
     past_exam_years: "",
+    instructor_difficulty: "",
+    question_type: "",
+    tags: [],
   };
 }
 
@@ -373,6 +396,51 @@ export default function QuestionCard({ index, question, onChange, onRemove, canR
             value={question.past_exam_years}
             onChange={(e) => update({ past_exam_years: e.target.value })}
             placeholder="e.g. 2078, 2080"
+            className="hm-input"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">
+            Instructor Difficulty
+          </label>
+          <select
+            value={question.instructor_difficulty || ""}
+            onChange={(e) => update({ instructor_difficulty: e.target.value })}
+            className="hm-input"
+          >
+            {DIFFICULTY_OPTIONS.map((d) => (
+              <option key={d.key} value={d.key}>{d.label}</option>
+            ))}
+          </select>
+          {question.actual_difficulty && (
+            <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+              Actual (from {question.actual_difficulty_sample_size} attempts): <span className="font-semibold capitalize">{question.actual_difficulty.replace("_", " ")}</span>
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Question Type</label>
+          <select
+            value={question.question_type || ""}
+            onChange={(e) => update({ question_type: e.target.value })}
+            className="hm-input"
+          >
+            {QUESTION_TYPE_OPTIONS.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">
+            Tags (comma-separated, optional)
+          </label>
+          <input
+            value={(question.tags || []).join(", ")}
+            onChange={(e) => update({ tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
+            placeholder="e.g. vector, scalar"
             className="hm-input"
           />
         </div>

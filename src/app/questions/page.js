@@ -163,6 +163,11 @@ function QuestionsContent() {
       references: q.references || [],
       remarks: q.remarks || "",
       past_exam_years: q.past_exam_years || "",
+      instructor_difficulty: q.instructor_difficulty || "",
+      actual_difficulty: q.actual_difficulty || "",
+      actual_difficulty_sample_size: q.actual_difficulty_sample_size || 0,
+      question_type: q.question_type || "",
+      tags: q.tags || [],
     });
 
     const slug = subjects.find((s) => s.id === q.subject)?.slug;
@@ -218,6 +223,9 @@ function QuestionsContent() {
       negative_marks: question.negative_marks,
       remarks: question.remarks,
       past_exam_years: question.past_exam_years,
+      instructor_difficulty: question.instructor_difficulty || "",
+      question_type: question.question_type || "",
+      tags: question.tags || [],
       explanation: question.explanation,
       explanation_latex: question.explanation_latex,
       explanation_video_url: question.explanation_video_url,
