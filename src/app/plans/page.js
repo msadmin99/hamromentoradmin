@@ -21,10 +21,15 @@ const DURATION_UNITS = [
   { key: "year", label: "Year(s)" },
 ];
 
-function emptyForm(productType) {
+function emptyForm(productType, courseId) {
   return {
     name: "", product_type: productType, duration_value: 1, duration_unit: "month", mock_test_quota: "",
     price: "", is_active: true, is_popular: false, is_best_value: false, order: 0,
+    // Only read when creating (not editing) — see save(). Defaults to just the
+    // course currently being viewed, but the admin can check more so the same
+    // plan gets created once per selected course instead of having to redo
+    // this whole form for every course one at a time.
+    courseIds: courseId ? [String(courseId)] : [],
   };
 }
 
@@ -55,9 +60,16 @@ function PlansContent() {
 
   function openCreate() {
     setEditingId(null);
-    setForm(emptyForm(tab));
+    setForm(emptyForm(tab, courseId));
     setError("");
     setShowForm(true);
+  }
+
+  function toggleCourseId(id) {
+    setForm((f) => ({
+      ...f,
+      courseIds: f.courseIds.includes(id) ? f.courseIds.filter((c) => c !== id) : [...f.courseIds, id],
+    }));
   }
 
   function openEdit(p) {
@@ -81,20 +93,46 @@ function PlansContent() {
   async function save(e) {
     e.preventDefault();
     setError("");
+
+    if (!editingId && form.courseIds.length === 0) {
+      setError("Select at least one course.");
+      return;
+    }
+
     setSaving(true);
-    const payload = {
-      ...form,
-      course: Number(courseId),
+    const { courseIds, ...rest } = form;
+    const basePayload = {
+      ...rest,
       duration_value: Number(form.duration_value),
       mock_test_quota: form.mock_test_quota === "" ? null : Number(form.mock_test_quota),
       price: Number(form.price),
       order: Number(form.order),
     };
+
     try {
       if (editingId) {
-        await api.patch(`/subscription-plans/${editingId}/`, payload);
+        await api.patch(`/subscription-plans/${editingId}/`, { ...basePayload, course: Number(courseId) });
       } else {
-        await api.post("/subscription-plans/", payload);
+        // One POST per selected course — SubscriptionPlan.course is a single
+        // FK (every downstream read, e.g. /subscription-plans/?course=,
+        // Subscription.course, assumes one course per plan row), so "the
+        // same plan for multiple courses" means creating one identical row
+        // per course rather than changing that model. Reused, not rewritten.
+        const results = await Promise.allSettled(
+          courseIds.map((id) => api.post("/subscription-plans/", { ...basePayload, course: Number(id) })),
+        );
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length > 0) {
+          const courseNames = courseIds
+            .filter((_, i) => results[i].status === "rejected")
+            .map((id) => courses.find((c) => String(c.id) === id)?.name || id);
+          setError(
+            `Created for ${courseIds.length - failed.length} of ${courseIds.length} course(s). Failed: ${courseNames.join(", ")} — ${failed[0].reason?.message || "unknown error"}`,
+          );
+          load();
+          setSaving(false);
+          return;
+        }
       }
       setShowForm(false);
       load();
@@ -198,6 +236,47 @@ function PlansContent() {
                 placeholder="e.g. 3 Month QBank Access"
               />
             </div>
+            {editingId ? (
+              <p className="rounded-lg bg-[var(--color-surface-muted)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
+                Course: <strong>{courses.find((c) => String(c.id) === courseId)?.name}</strong> — editing only updates
+                this course&apos;s plan. To change other courses&apos; versions of this plan, edit them separately.
+              </p>
+            ) : (
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-[var(--color-text-muted)]">
+                    Create for course(s)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        courseIds: f.courseIds.length === courses.length ? [] : courses.map((c) => String(c.id)),
+                      }))
+                    }
+                    className="text-[11px] font-semibold text-brand-blue"
+                  >
+                    {form.courseIds.length === courses.length ? "Deselect all" : "Select all"}
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--color-border)] p-2">
+                  {courses.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--color-surface-muted)]">
+                      <input
+                        type="checkbox"
+                        checked={form.courseIds.includes(String(c.id))}
+                        onChange={() => toggleCourseId(String(c.id))}
+                      />
+                      {c.name}
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+                  Creates one identical plan per course selected — {form.courseIds.length || 0} course{form.courseIds.length === 1 ? "" : "s"} selected.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Duration</label>
@@ -278,7 +357,13 @@ function PlansContent() {
             </label>
             {error && <p className="text-xs font-medium text-brand-red">{error}</p>}
             <button type="submit" disabled={saving} className="hm-btn-primary mt-2">
-              {saving ? "Saving…" : editingId ? "Save changes" : "Create plan"}
+              {saving
+                ? "Saving…"
+                : editingId
+                  ? "Save changes"
+                  : form.courseIds.length > 1
+                    ? `Create plan for ${form.courseIds.length} courses`
+                    : "Create plan"}
             </button>
           </form>
         </Modal>
