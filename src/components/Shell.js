@@ -43,6 +43,7 @@ const NAV_GROUPS = [
     label: "Monetization",
     items: [
       { href: "/plans", label: "Subscription Plans", icon: "💳", feature: "billing" },
+      { href: "/combo-plans", label: "Combo Plans", icon: "🎁", feature: "billing" },
       { href: "/payment-methods", label: "Payment Methods", icon: "🏦", feature: "billing" },
       { href: "/promo-codes", label: "Promo Codes", icon: "🏷️", feature: "billing" },
       { href: "/payments", label: "Payments", icon: "💰", feature: "billing" },
