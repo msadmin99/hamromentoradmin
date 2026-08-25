@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QuestionCard, { emptyQuestion } from "@/components/QuestionCard";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
@@ -32,6 +32,21 @@ function ManualEntryContent() {
     api.get("/courses/").then(setCourses);
     api.get("/subjects/").then(setSubjects);
   }, []);
+
+  // Prevents picking a subject from an unrelated course's curriculum (e.g. a
+  // NMCLE-BDS subject while CEE-MBBS is selected above) — mirrors the
+  // already-correct cascading filter used on the Question list/filter page.
+  const filteredSubjects = useMemo(() => {
+    if (selectedCourses.length === 0) return subjects;
+    const courseIds = selectedCourses.map(Number);
+    return subjects.filter((s) => (s.courses || []).some((cid) => courseIds.includes(cid)));
+  }, [subjects, selectedCourses]);
+
+  useEffect(() => {
+    if (subject && !filteredSubjects.some((s) => s.id === Number(subject))) {
+      setSubject("");
+    }
+  }, [filteredSubjects, subject]);
 
   useEffect(() => {
     setSelectedUnit("");
@@ -174,12 +189,15 @@ function ManualEntryContent() {
                 <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Subject</label>
                 <select required value={subject} onChange={(e) => setSubject(e.target.value)} className="hm-input">
                   <option value="">Select a subject</option>
-                  {subjects.map((s) => (
+                  {filteredSubjects.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
                   ))}
                 </select>
+                {selectedCourses.length > 0 && filteredSubjects.length === 0 && (
+                  <p className="mt-1 text-[11px] text-brand-red">No subjects are tagged to the selected course(s) yet.</p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Unit</label>

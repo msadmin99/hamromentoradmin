@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import BatchPicker from "@/components/BatchPicker";
 import CoursePicker from "@/components/CoursePicker";
 import ExamBuilderModal from "@/components/ExamBuilderModal";
 import QuestionPicker from "@/components/QuestionPicker";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
+import StudentPicker from "@/components/StudentPicker";
 import { api } from "@/lib/api";
 
 const SESSION_STATUS_META = {
@@ -90,6 +92,9 @@ function emptyForm(examType) {
     exam_type: examType || "mock",
     subject: "",
     courses: [],
+    assigned_students: [],
+    assigned_batches: [],
+    is_draft: true,
     academic_year: "2025-26",
     university: "",
     scheduled_start: "",
@@ -187,6 +192,9 @@ function ExamManagementContent() {
       exam_type: full.exam_type,
       subject: full.subject || "",
       courses: full.courses || [],
+      assigned_students: full.assigned_students || [],
+      assigned_batches: full.assigned_batches || [],
+      is_draft: full.is_draft,
       academic_year: full.academic_year || "",
       university: full.university || "",
       scheduled_start: full.scheduled_start ? full.scheduled_start.slice(0, 16) : "",
@@ -218,6 +226,10 @@ function ExamManagementContent() {
       setError('University and Academic year are both required for "Past Year Questions" — students browse these exams by university, then year.');
       return;
     }
+    if (!form.is_draft && form.courses.length === 0 && form.assigned_students.length === 0 && form.assigned_batches.length === 0) {
+      setError('A published exam needs at least one course, batch, or individual student assigned — otherwise no student can see it. Assign it in the "Access & Assignment" tab, or keep it as Draft.');
+      return;
+    }
     setError("");
     setSaving(true);
     const payload = {
@@ -227,6 +239,9 @@ function ExamManagementContent() {
       exam_type: form.exam_type,
       subject: form.subject || null,
       courses: form.courses,
+      assigned_students: form.assigned_students,
+      assigned_batches: form.assigned_batches,
+      is_draft: form.is_draft,
       academic_year: form.academic_year,
       university: form.university,
       scheduled_start: form.scheduled_start || null,
@@ -329,13 +344,6 @@ function ExamManagementContent() {
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
-              Assign to courses (blank = visible to every enrolled student)
-            </label>
-            <CoursePicker courses={courses} selected={form.courses} onChange={(v) => setForm((f) => ({ ...f, courses: v }))} />
-          </div>
-
           {form.exam_type === "pyq" && (
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
@@ -410,6 +418,64 @@ function ExamManagementContent() {
               <p className="mt-2 text-xs italic text-[var(--color-text-muted)]">There are no questions yet.</p>
             )}
           </div>
+        </div>
+      ),
+    },
+    {
+      key: "access",
+      label: "Access & Assignment",
+      content: (
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-dashed border-[var(--color-border)] p-3">
+            <p className="text-sm font-bold text-[var(--color-text)]">Exam status</p>
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              Draft: only staff can see this exam. Published: visible to whoever is assigned below —
+              never automatically to everyone.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, is_draft: true }))}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold ${form.is_draft ? "bg-brand-blue text-white" : "border border-[var(--color-border)] text-[var(--color-text-muted)]"}`}
+              >
+                Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, is_draft: false }))}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold ${!form.is_draft ? "bg-brand-green text-white" : "border border-[var(--color-border)] text-[var(--color-text-muted)]"}`}
+              >
+                Published
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+              Assign to course(s)
+            </label>
+            <CoursePicker courses={courses} selected={form.courses} onChange={(v) => setForm((f) => ({ ...f, courses: v }))} />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+              Assign to batch(es) (optional — grants access to a specific cohort within a course)
+            </label>
+            <BatchPicker
+              selectedCourses={courses.filter((c) => form.courses.includes(c.id))}
+              selected={form.assigned_batches}
+              onChange={(v) => setForm((f) => ({ ...f, assigned_batches: v }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+              Assign to individual student(s) (optional — overrides course/batch scoping for these students)
+            </label>
+            <StudentPicker selected={form.assigned_students} onChange={(v) => setForm((f) => ({ ...f, assigned_students: v }))} />
+          </div>
+
+          <AccessPreviewPanel courses={form.courses} assignedStudents={form.assigned_students} assignedBatches={form.assigned_batches} />
         </div>
       ),
     },
@@ -675,6 +741,50 @@ function ExamManagementContent() {
             setShowPicker(false);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/** "Who can see this exam?" confirmation box (spec item 16) — computed from
+ * the not-yet-saved selection currently in the form, so an admin can review
+ * before ever hitting Save/Publish. */
+function AccessPreviewPanel({ courses, assignedStudents, assignedBatches }) {
+  const [preview, setPreview] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  async function check() {
+    setChecking(true);
+    try {
+      const data = await api.post("/tests/access_preview/", {
+        courses, assigned_students: assignedStudents, assigned_batches: assignedBatches,
+      });
+      setPreview(data);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl bg-[var(--color-surface-muted)] p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-[var(--color-text)]">Exam Access Preview</p>
+        <button type="button" onClick={check} disabled={checking} className="text-xs font-semibold text-brand-blue disabled:opacity-60">
+          {checking ? "Checking…" : "Check who can see this →"}
+        </button>
+      </div>
+      {preview && (
+        <div className="mt-2 text-xs text-[var(--color-text)]">
+          <p>
+            Students who can access: <strong>{preview.eligible_count}</strong>
+          </p>
+          <p className="mt-1 text-[var(--color-text-muted)]">
+            Via course(s): {preview.courses.length > 0 ? preview.courses.map((c) => c.name).join(", ") : "none"}
+            {preview.batch_count > 0 && ` · ${preview.batch_count} batch(es)`}
+            {preview.individual_student_count > 0 && ` · ${preview.individual_student_count} individual student(s)`}
+          </p>
+          <p className="mt-1 text-[var(--color-text-muted)]">All other students: NOT VISIBLE.</p>
+        </div>
       )}
     </div>
   );
