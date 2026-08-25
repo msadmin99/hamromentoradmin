@@ -251,24 +251,31 @@ function SubjectsContent() {
     }
   }
 
+  // Grouped by individual COURSE, not program_group — several unrelated
+  // courses can share one program_group (e.g. CEE-MBBS, CEE-BDS, CEE-B.Pharm
+  // are all "CEE-UG"), so grouping at the program_group level made a subject
+  // checked for only one course visually appear alongside every other
+  // course in that same group, reading as "assigned to everything" even
+  // though the actual saved Course(s) badges were already correct.
   const sections = useMemo(() => {
-    const order = [];
-    courses.forEach((c) => {
-      const group = c.program_group || "Other";
-      if (!order.includes(group)) order.push(group);
-    });
-    order.push("Unassigned");
-
     const bySection = {};
+    const unassigned = [];
     subjects.forEach((s) => {
-      const groups = new Set((s.courses_detail || []).map((c) => c.program_group || "Other"));
-      if (groups.size === 0) groups.add("Unassigned");
-      groups.forEach((g) => {
-        (bySection[g] = bySection[g] || []).push(s);
+      const courseIds = (s.courses_detail || []).map((c) => c.id);
+      if (courseIds.length === 0) {
+        unassigned.push(s);
+        return;
+      }
+      courseIds.forEach((id) => {
+        (bySection[id] = bySection[id] || []).push(s);
       });
     });
 
-    return order.filter((g) => bySection[g]?.length).map((g) => [g, bySection[g]]);
+    const result = courses
+      .filter((c) => bySection[c.id]?.length)
+      .map((c) => [c.program_group ? `${c.program_group} → ${c.name}` : c.name, bySection[c.id]]);
+    if (unassigned.length > 0) result.push(["Unassigned", unassigned]);
+    return result;
   }, [subjects, courses]);
 
   function SubjectTable({ list }) {
