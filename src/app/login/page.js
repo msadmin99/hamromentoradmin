@@ -16,6 +16,7 @@ const FEATURE_ROUTES = {
   daily_practice: "/exam-management",
   students: "/students",
   enrollment_requests: "/enrollment-requests",
+  question_reports: "/question-reports",
   billing: "/promo-codes",
   courses: "/courses",
   website_settings: "/website",

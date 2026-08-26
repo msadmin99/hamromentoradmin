@@ -18,6 +18,7 @@ const FEATURE_LABELS = {
   test_series: "Test Series",
   self_mock_test: "Self Mock Test",
   enrollment_requests: "Enrollment Requests",
+  question_reports: "Question Reports",
   daily_live_exam: "Daily Live Exam",
   mock_test: "Mock Test",
   website_settings: "Website Settings",
@@ -27,7 +28,9 @@ const FEATURE_LABELS = {
 };
 
 const ADMIN_FEATURES = Object.keys(FEATURE_LABELS);
-const EDITOR_FEATURES = ["question_bank", "video_lectures", "test_series", "daily_live_exam", "self_mock_test", "mock_test"];
+const EDITOR_FEATURES = [
+  "question_bank", "video_lectures", "test_series", "daily_live_exam", "self_mock_test", "mock_test", "question_reports",
+];
 
 function emptyForm() {
   return { name: "", email: "", password: "", admin_role: "editor" };

@@ -47,6 +47,17 @@ function QuestionsContent() {
     api.get("/auth/teachers/").then(setTeachers).catch(() => {});
   }, []);
 
+  // Deep-link support for "jump to this question's edit form" (e.g. from
+  // the Question Reports queue) — plain window.location, not
+  // next/navigation's useSearchParams, so this page doesn't need a
+  // Suspense boundary just for a one-off query param read.
+  useEffect(() => {
+    if (subjects.length === 0) return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) openEdit({ id: Number(editId) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects]);
+
   // Subject options narrow to the selected course, if any.
   useEffect(() => {
     const params = new URLSearchParams();
@@ -155,17 +166,28 @@ function QuestionsContent() {
       text: q.text || "",
       latex: q.latex || "",
       image: q.image || null,
-      options: (q.options || []).map((o) => ({ text: o.text, latex: o.latex || "", image: o.image || null, is_correct: o.is_correct })),
+      options: (q.options || []).map((o) => ({
+        text: o.text, latex: o.latex || "", image: o.image || null, is_correct: o.is_correct,
+        explanation: o.explanation || "", pick_count: o.pick_count, pick_percentage: o.pick_percentage,
+      })),
       explanation: q.explanation || "",
       explanation_latex: q.explanation_latex || "",
       explanation_image: q.explanation_image || null,
       explanation_video_url: q.explanation_video_url || "",
       references: q.references || [],
+      key_takeaway: q.key_takeaway || "",
+      reference_book: q.reference_book || null,
+      reference_edition: q.reference_edition || "",
+      reference_chapter: q.reference_chapter || "",
+      reference_page: q.reference_page || "",
+      reference_url: q.reference_url || "",
       remarks: q.remarks || "",
       past_exam_years: q.past_exam_years || "",
       instructor_difficulty: q.instructor_difficulty || "",
       actual_difficulty: q.actual_difficulty || "",
       actual_difficulty_sample_size: q.actual_difficulty_sample_size || 0,
+      total_attempts: q.total_attempts || 0,
+      correct_attempts: q.correct_attempts || 0,
       question_type: q.question_type || "",
       tags: q.tags || [],
     });
@@ -230,7 +252,15 @@ function QuestionsContent() {
       explanation_latex: question.explanation_latex,
       explanation_video_url: question.explanation_video_url,
       references: question.references || [],
-      options: question.options.map((o, i) => ({ text: o.text, latex: o.latex, is_correct: o.is_correct, order: i })),
+      key_takeaway: question.key_takeaway || "",
+      reference_book: question.reference_book || null,
+      reference_edition: question.reference_edition || "",
+      reference_chapter: question.reference_chapter || "",
+      reference_page: question.reference_page || "",
+      reference_url: question.reference_url || "",
+      options: question.options.map((o, i) => ({
+        text: o.text, latex: o.latex, is_correct: o.is_correct, order: i, explanation: o.explanation || "",
+      })),
     };
     try {
       await api.patch(`/questions/${editingId}/`, payload);

@@ -17,6 +17,7 @@ const NAV_GROUPS = [
       { href: "/subjects", label: "Subjects", icon: "📘", feature: "question_bank" },
       { href: "/questions", label: "Question Entry", icon: "📄", feature: "question_entry" },
       { href: "/question-bank-summary", label: "Question Bank Summary", icon: "🗂️", feature: "question_bank" },
+      { href: "/question-reports", label: "Question Reports", icon: "🚩", feature: "question_reports" },
       { href: "/videos", label: "Video Lectures", icon: "🎥", feature: "video_lectures" },
     ],
   },

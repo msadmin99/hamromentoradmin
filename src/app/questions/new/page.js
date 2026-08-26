@@ -111,7 +111,15 @@ function ManualEntryContent() {
           explanation_latex: q.explanation_latex,
           explanation_video_url: q.explanation_video_url,
           references: q.references || [],
-          options: q.options.map((o, idx) => ({ text: o.text, latex: o.latex, is_correct: o.is_correct, order: idx })),
+          key_takeaway: q.key_takeaway || "",
+          reference_book: q.reference_book || null,
+          reference_edition: q.reference_edition || "",
+          reference_chapter: q.reference_chapter || "",
+          reference_page: q.reference_page || "",
+          reference_url: q.reference_url || "",
+          options: q.options.map((o, idx) => ({
+            text: o.text, latex: o.latex, is_correct: o.is_correct, order: idx, explanation: o.explanation || "",
+          })),
         };
         const created = await api.post("/questions/", payload);
         const hasImages = q.image instanceof File || q.explanation_image instanceof File || q.options.some((o) => o.image instanceof File);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import PreviewModal from "./richeditor/PreviewModal";
 import RichEditor from "./richeditor/RichEditor";
 import { videoEmbedUrl } from "./richeditor/uploadMedia";
@@ -30,18 +31,21 @@ export function emptyOption() {
   // latex/image are kept (unused by this editor) purely so any legacy value —
   // e.g. from the Excel bulk-import flow — survives an edit-save untouched
   // rather than being silently wiped when this option round-trips through save().
-  return { text: "", latex: "", image: null, image_category: "other", is_correct: false };
+  return { text: "", latex: "", image: null, image_category: "other", is_correct: false, explanation: "" };
 }
 
 // Independent of actual_difficulty (computed from real student performance,
 // read-only — see the Smart Question Bank dashboard's difficulty analytics).
+// Keys match academics.models.Question.DIFFICULTY_CHOICES on the backend.
 const DIFFICULTY_OPTIONS = [
   { key: "", label: "Not set" },
+  { key: "very_easy", label: "Very Easy" },
   { key: "easy", label: "Easy" },
-  { key: "medium", label: "Medium" },
-  { key: "hard", label: "Hard" },
-  { key: "very_hard", label: "Very Hard" },
+  { key: "medium", label: "Moderate" },
+  { key: "hard", label: "Difficult" },
+  { key: "very_hard", label: "Very Difficult" },
 ];
+const DIFFICULTY_LABEL = Object.fromEntries(DIFFICULTY_OPTIONS.map((d) => [d.key, d.label]));
 
 const QUESTION_TYPE_OPTIONS = [
   { key: "", label: "Not set" },
@@ -68,6 +72,12 @@ export function emptyQuestion() {
     explanation_image_category: "other",
     explanation_video_url: "",
     references: [],
+    key_takeaway: "",
+    reference_book: null,
+    reference_edition: "",
+    reference_chapter: "",
+    reference_page: "",
+    reference_url: "",
     remarks: "",
     past_exam_years: "",
     instructor_difficulty: "",
@@ -239,6 +249,64 @@ function ReferenceRow({ reference, onChange, onRemove }) {
   );
 }
 
+function ReferenceBookPicker({ value, onChange }) {
+  const [books, setBooks] = useState([]);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  useEffect(() => {
+    api.get("/reference-books/").then(setBooks).catch(() => {});
+  }, []);
+
+  async function handleSelect(e) {
+    const v = e.target.value;
+    if (v === "__new__") {
+      setCreating(true);
+      return;
+    }
+    onChange(v ? Number(v) : null);
+  }
+
+  async function saveNewBook() {
+    if (!newName.trim()) return;
+    const book = await api.post("/reference-books/", { name: newName.trim() });
+    setBooks((b) => [...b, book]);
+    onChange(book.id);
+    setCreating(false);
+    setNewName("");
+  }
+
+  if (creating) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="New book name"
+          className="hm-input flex-1 text-xs"
+        />
+        <button type="button" onClick={saveNewBook} className="hm-btn-primary px-2 py-1.5 text-xs">
+          Add
+        </button>
+        <button type="button" onClick={() => setCreating(false)} className="text-xs font-semibold text-[var(--color-text-muted)]">
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <select value={value || ""} onChange={handleSelect} className="hm-input text-xs">
+      <option value="">Not set</option>
+      {books.map((b) => (
+        <option key={b.id} value={b.id}>{b.name}</option>
+      ))}
+      <option value="__new__">+ Add a new book…</option>
+    </select>
+  );
+}
+
 export default function QuestionCard({ index, question, onChange, onRemove, canRemove }) {
   const [showPreview, setShowPreview] = useState(false);
 
@@ -345,6 +413,17 @@ export default function QuestionCard({ index, question, onChange, onRemove, canR
                     onCategoryChange={(v) => updateOption(i, { image_category: v })}
                   />
                 </div>
+                <input
+                  value={opt.explanation || ""}
+                  onChange={(e) => updateOption(i, { explanation: e.target.value })}
+                  placeholder={opt.is_correct ? "Why this is right (optional)" : "Why this is wrong (optional) — shown to students after they answer"}
+                  className="hm-input mt-1.5 w-full text-xs"
+                />
+                {opt.pick_percentage != null && (
+                  <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                    {opt.pick_count ?? 0} pick{opt.pick_count === 1 ? "" : "s"} ({opt.pick_percentage}%)
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -380,6 +459,64 @@ export default function QuestionCard({ index, question, onChange, onRemove, canR
           <button type="button" onClick={addReference} className="hm-btn-outline mt-1.5 text-xs">
             + Add reference
           </button>
+        </div>
+
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Key Takeaway (optional)</label>
+          <input
+            value={question.key_takeaway || ""}
+            onChange={(e) => update({ key_takeaway: e.target.value })}
+            placeholder="One high-yield exam point shown after the explanation"
+            className="hm-input w-full text-xs"
+          />
+        </div>
+
+        <div className="mt-3">
+          <p className="mb-1.5 text-xs font-semibold text-[var(--color-text-muted)]">
+            Primary Reference (optional) — rendered in its own card, separate from the links above
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Book</label>
+              <ReferenceBookPicker value={question.reference_book} onChange={(v) => update({ reference_book: v })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Edition</label>
+              <input
+                value={question.reference_edition || ""}
+                onChange={(e) => update({ reference_edition: e.target.value })}
+                placeholder="e.g. 10th"
+                className="hm-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Chapter</label>
+              <input
+                value={question.reference_chapter || ""}
+                onChange={(e) => update({ reference_chapter: e.target.value })}
+                placeholder="e.g. Hemodynamic Disorders"
+                className="hm-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Page</label>
+              <input
+                value={question.reference_page || ""}
+                onChange={(e) => update({ reference_page: e.target.value })}
+                placeholder="e.g. 245 or 245-247"
+                className="hm-input text-xs"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-[10px] font-bold uppercase text-[var(--color-text-muted)]">URL (optional)</label>
+              <input
+                value={question.reference_url || ""}
+                onChange={(e) => update({ reference_url: e.target.value })}
+                placeholder="https://…"
+                className="hm-input text-xs"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -417,7 +554,13 @@ export default function QuestionCard({ index, question, onChange, onRemove, canR
           </select>
           {question.actual_difficulty && (
             <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
-              Actual (from {question.actual_difficulty_sample_size} attempts): <span className="font-semibold capitalize">{question.actual_difficulty.replace("_", " ")}</span>
+              Actual (from {question.actual_difficulty_sample_size} attempts): <span className="font-semibold">{DIFFICULTY_LABEL[question.actual_difficulty] || question.actual_difficulty}</span>
+            </p>
+          )}
+          {question.total_attempts > 0 && (
+            <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+              {question.total_attempts} student{question.total_attempts === 1 ? "" : "s"} answered ·{" "}
+              {Math.round((question.correct_attempts / question.total_attempts) * 100)}% correct
             </p>
           )}
         </div>
