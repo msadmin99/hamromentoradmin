@@ -64,13 +64,17 @@ function downloadCsv(rows) {
 function ScreenshotThumb({ purchaseId, hasScreenshot }) {
   const [url, setUrl] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function reveal() {
     if (url || loading) return;
     setLoading(true);
+    setError("");
     try {
       const data = await api.get(`/purchases/${purchaseId}/screenshot/`);
       setUrl(data.url);
+    } catch (err) {
+      setError(err.message || "Couldn't load the screenshot.");
     } finally {
       setLoading(false);
     }
@@ -79,9 +83,12 @@ function ScreenshotThumb({ purchaseId, hasScreenshot }) {
   if (!hasScreenshot) return <span className="text-xs text-[var(--color-text-muted)]">—</span>;
   if (!url) {
     return (
-      <button onClick={reveal} disabled={loading} className="text-xs font-semibold text-brand-blue">
-        {loading ? "Loading…" : "View"}
-      </button>
+      <div className="flex flex-col items-start gap-0.5">
+        <button onClick={reveal} disabled={loading} className="text-xs font-semibold text-brand-blue">
+          {loading ? "Loading…" : "View"}
+        </button>
+        {error && <span className="text-[10px] text-brand-red">{error}</span>}
+      </div>
     );
   }
   return (
