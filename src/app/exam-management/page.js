@@ -16,6 +16,7 @@ import CreateExamWizardShell from "@/components/examManagement/CreateExamWizardS
 import ExamTable from "@/components/examManagement/ExamTable";
 import FilterBar from "@/components/examManagement/FilterBar";
 import ProgramBar from "@/components/examManagement/ProgramBar";
+import QuestionListEditor from "@/components/examManagement/QuestionListEditor";
 import QuickActionsPanel from "@/components/examManagement/QuickActionsPanel";
 import SavedViewsPanel from "@/components/examManagement/SavedViewsPanel";
 import SchedulePickerModal from "@/components/examManagement/SchedulePickerModal";
@@ -499,26 +500,18 @@ function ExamManagementContent() {
           </button>
         </div>
         <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
-          Pick questions by {hierarchyLabels.subject.toLowerCase()} → {hierarchyLabels.unit.toLowerCase()} → {hierarchyLabels.topic.toLowerCase()}.
+          Pick questions by {hierarchyLabels.subject.toLowerCase()} → {hierarchyLabels.unit.toLowerCase()} → {hierarchyLabels.topic.toLowerCase()}. Click a
+          question below to edit its text, options, and explanation, or preview how it appears to students.
         </p>
-        {form.questions.length > 0 ? (
-          <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[var(--color-border)]">
-            {form.questions.map((q) => (
-              <div key={q.id} className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2 text-xs last:border-0">
-                <span className="truncate">{q.text}</span>
-                <button
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, questions: f.questions.filter((x) => x.id !== q.id) }))}
-                  className="flex-none font-semibold text-brand-red"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-xs italic text-[var(--color-text-muted)]">There are no questions yet.</p>
-        )}
+        <div className="mt-2">
+          <QuestionListEditor
+            questions={form.questions}
+            onRemove={(id) => setForm((f) => ({ ...f, questions: f.questions.filter((x) => x.id !== id) }))}
+            onQuestionUpdated={(updated) =>
+              setForm((f) => ({ ...f, questions: f.questions.map((x) => (x.id === updated.id ? updated : x)) }))
+            }
+          />
+        </div>
       </div>
     </div>
   );
