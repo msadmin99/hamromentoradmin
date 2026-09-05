@@ -12,6 +12,8 @@ import Shell from "@/components/Shell";
 import StudentPicker from "@/components/StudentPicker";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
+import { countNetNew, mergeImportedQuestions } from "@/lib/examQuestionMerge";
+import BulkImportWorkspace from "@/components/examManagement/BulkImportWorkspace";
 import CreateExamWizardShell from "@/components/examManagement/CreateExamWizardShell";
 import ExamTable from "@/components/examManagement/ExamTable";
 import FilterBar from "@/components/examManagement/FilterBar";
@@ -130,6 +132,14 @@ function ExamManagementContent() {
   const [wizardStep, setWizardStep] = useState(0);
   const [showBuilder, setShowBuilder] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  // Phase C: how many questions this edit session has added via Bulk
+  // Import that haven't been persisted by Save yet — 0 means "nothing to
+  // lose" (Cancel/close behaves exactly as before); >0 gates a
+  // confirmation before discarding them, and drives the "N questions
+  // added to this exam after Save" copy. Reset on every fresh
+  // openCreate/openEdit and on a successful save().
+  const [pendingImportCount, setPendingImportCount] = useState(0);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -137,6 +147,20 @@ function ExamManagementContent() {
   const [saving, setSaving] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // Phase C/Step 10: covers literal browser navigation away (tab close,
+  // reload, URL bar) while a Bulk Import has added questions to
+  // form.questions that Save hasn't persisted yet — the in-app Cancel
+  // button's own confirm() (below) covers the in-app close path.
+  useEffect(() => {
+    if (!(showBuilder && pendingImportCount > 0)) return undefined;
+    function handleBeforeUnload(e) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [showBuilder, pendingImportCount]);
 
   useEffect(() => {
     api.get("/subjects/").then(setSubjects);
@@ -308,6 +332,7 @@ function ExamManagementContent() {
       questions: full.questions || [],
     });
     setError("");
+    setPendingImportCount(0);
     setShowBuilder(true);
   }
 
@@ -367,6 +392,7 @@ function ExamManagementContent() {
         setEditingId(created.id);
         pushToast("Exam created.");
       }
+      setPendingImportCount(0); // whatever was bulk-imported is now persisted
       loadRows();
       loadStats();
       if (closeAfter) {
@@ -493,12 +519,28 @@ function ExamManagementContent() {
         </select>
       </div>
       <div className="rounded-xl border border-[var(--color-border)] p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-bold text-[var(--color-text)]">Questions ({form.questions.length})</p>
-          <button type="button" onClick={() => setShowPicker(true)} className="hm-btn-outline text-xs">
-            + Insert questions
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setShowPicker(true)} className="hm-btn-outline text-xs">
+              + Insert questions
+            </button>
+            {/* Edit-only (editingId is set once a real exam is being edited,
+                not during the Create wizard) — matches Phase C's scope:
+                Edit Exam -> General -> Bulk Import Questions. */}
+            {editingId != null && (
+              <button type="button" onClick={() => setShowBulkImport(true)} className="hm-btn-outline text-xs">
+                📥 Bulk Import Questions
+              </button>
+            )}
+          </div>
         </div>
+        {pendingImportCount > 0 && (
+          <p className="mt-2 rounded-lg bg-brand-green-light px-2.5 py-1.5 text-[11px] font-semibold text-brand-green">
+            {pendingImportCount} question{pendingImportCount === 1 ? "" : "s"} added below via Bulk Import — click Save to keep{" "}
+            {pendingImportCount === 1 ? "it" : "them"} in this exam.
+          </p>
+        )}
         <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
           Pick questions by {hierarchyLabels.subject.toLowerCase()} → {hierarchyLabels.unit.toLowerCase()} → {hierarchyLabels.topic.toLowerCase()}. Click a
           question below to edit its text, options, and explanation, or preview how it appears to students.
@@ -841,7 +883,48 @@ function ExamManagementContent() {
       )}
 
       {showBuilder && (
-        <ExamBuilderModal title="Edit exam" tabs={editTabs} onCancel={() => setShowBuilder(false)} onSave={save} saving={saving} error={error} />
+        <ExamBuilderModal
+          title="Edit exam"
+          tabs={editTabs}
+          onCancel={() => {
+            // Phase C/Step 10: don't silently discard questions a Bulk
+            // Import already added to form.questions but Save hasn't
+            // persisted yet — every other Cancel path (nothing imported)
+            // behaves exactly as before.
+            if (
+              pendingImportCount > 0 &&
+              !window.confirm(
+                `${pendingImportCount} imported question${pendingImportCount === 1 ? " hasn't" : "s haven't"} been saved yet. ` +
+                  "Closing now will discard them from this exam. Close anyway?",
+              )
+            ) {
+              return;
+            }
+            setShowBuilder(false);
+          }}
+          onSave={save}
+          saving={saving}
+          error={error}
+        />
+      )}
+
+      {showBulkImport && (
+        // Full-bleed, above ExamBuilderModal in either its normal or Phase
+        // A Full-Screen mode (z-[60] > its z-50) — reuses the same visual
+        // language rather than nesting a small modal inside the modal.
+        // ExamBuilderModal itself is untouched either way.
+        <div className="fixed inset-0 z-[60] bg-[var(--color-surface-muted)]">
+          <BulkImportWorkspace
+            onClose={() => setShowBulkImport(false)}
+            onImported={(newQuestions) => {
+              setForm((f) => {
+                setPendingImportCount((n) => n + countNetNew(f.questions, newQuestions));
+                return { ...f, questions: mergeImportedQuestions(f.questions, newQuestions) };
+              });
+              setShowBulkImport(false);
+            }}
+          />
+        </div>
       )}
 
       {showPicker && (
