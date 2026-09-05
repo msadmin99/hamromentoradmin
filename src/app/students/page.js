@@ -1,154 +1,173 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
+import StudentsFilterCard from "@/components/students/StudentsFilterCard";
+import StudentsPagination from "@/components/students/StudentsPagination";
+import StudentsTable from "@/components/students/StudentsTable";
 import { api } from "@/lib/api";
+
+const DEFAULT_PAGE_SIZE = 20;
 
 function StudentsContent() {
   const [students, setStudents] = useState([]);
-  const [enrollments, setEnrollments] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [courses, setCourses] = useState([]);
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("");
+  const [accessFilter, setAccessFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [togglingId, setTogglingId] = useState(null);
 
   useEffect(() => {
-    api.get("/courses/").then(setCourses);
+    api.get("/courses/").then(setCourses).catch(() => {});
   }, []);
 
   function load() {
     setLoading(true);
+    setError("");
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (courseFilter) params.set("course", courseFilter);
+    if (accessFilter) params.set("access", accessFilter);
+    if (statusFilter) params.set("status", statusFilter);
     if (dateFrom) params.set("from", dateFrom);
     if (dateTo) params.set("to", dateTo);
-    Promise.all([
-      api.get(`/auth/users/?${params.toString()}`),
-      api.get("/enrollments/"),
-    ])
-      .then(([s, e]) => {
-        setStudents(s);
-        setEnrollments(e);
+    params.set("page", String(page));
+    params.set("page_size", String(pageSize));
+    api
+      .get(`/auth/users/browse/?${params.toString()}`)
+      .then((data) => {
+        setStudents(data.results || []);
+        setTotalCount(data.count || 0);
       })
+      .catch((err) => setError(err.message || "Something went wrong."))
       .finally(() => setLoading(false));
   }
 
+  // Filters materially changing should always land back on page 1. Skipped
+  // on first mount (mountedFilters ref) so mount fires exactly one fetch
+  // (from the [page, pageSize] effect below), not two.
+  const mountedFilters = useRef(false);
   useEffect(() => {
-    const t = setTimeout(load, 300);
+    if (!mountedFilters.current) {
+      mountedFilters.current = true;
+      return undefined;
+    }
+    const t = setTimeout(() => {
+      if (page !== 1) setPage(1);
+      else load();
+    }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, courseFilter, dateFrom, dateTo]);
+  }, [search, courseFilter, accessFilter, statusFilter, dateFrom, dateTo]);
+
+  useEffect(load, [page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function clearFilters() {
+    setSearch("");
+    setCourseFilter("");
+    setAccessFilter("");
+    setStatusFilter("");
+    setDateFrom("");
+    setDateTo("");
+  }
 
   async function toggleActive(student) {
-    await api.patch(`/auth/users/${student.id}/`, { is_active: !student.is_active });
-    load();
+    setTogglingId(student.id);
+    try {
+      await api.patch(`/auth/users/${student.id}/`, { is_active: !student.is_active });
+      load();
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  function changePageSize(next) {
+    setPageSize(next);
+    setPage(1);
   }
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-bold text-[var(--color-text)]">Students</h1>
-      <p className="mt-1 text-sm text-[var(--color-text-muted)]">Enrolled students with active accounts.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-brand-blue/10 text-xl">
+            🧑‍🎓
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-[var(--color-text)]">Students</h1>
+            <p className="mt-0.5 text-sm text-[var(--color-text-muted)]">
+              Manage and view all enrolled students with active accounts.
+            </p>
+          </div>
+        </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, email, phone, or ID…"
-          className="hm-input w-64"
-        />
-        <select value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)} className="hm-input w-52">
-          <option value="">All courses</option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-          Enrolled from
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="hm-input w-40" />
-          to
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="hm-input w-40" />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled
+            title="Adding students directly isn't available yet — students register themselves"
+            className="hm-btn-outline cursor-not-allowed px-3 py-2 text-xs opacity-50"
+          >
+            + Add Student
+          </button>
+          <button
+            type="button"
+            disabled
+            title="Export isn't available yet"
+            className="hm-btn-outline cursor-not-allowed px-3 py-2 text-xs opacity-50"
+          >
+            ⬇ Export
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 hm-card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--color-surface-muted)] text-left text-xs text-[var(--color-text-muted)]">
-            <tr>
-              <th className="whitespace-nowrap px-4 py-3">Name</th>
-              <th className="whitespace-nowrap px-4 py-3">Email</th>
-              <th className="whitespace-nowrap px-4 py-3">Courses</th>
-              <th className="whitespace-nowrap px-4 py-3">Access</th>
-              <th className="whitespace-nowrap px-4 py-3">Active Devices</th>
-              <th className="whitespace-nowrap px-4 py-3">Status</th>
-              <th className="whitespace-nowrap px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-border)]">
-            {students.map((s) => {
-              const myEnrollments = enrollments.filter((e) => e.user === s.id);
-              const hasPackage = myEnrollments.some((e) => e.access_type === "package");
-              return (
-                <tr key={s.id}>
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-[var(--color-text)]">
-                    {s.first_name} {s.last_name}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-[var(--color-text-muted)]">{s.email}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {myEnrollments.map((e) => (
-                        <span
-                          key={e.id}
-                          className="whitespace-nowrap rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-text)]"
-                        >
-                          {e.course_prefix} <span className="text-[var(--color-text-muted)]">{e.student_code}</span>
-                        </span>
-                      ))}
-                      {myEnrollments.length === 0 && <span className="text-xs text-[var(--color-text-muted)]">—</span>}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span
-                      className={`rounded-md px-2 py-1 text-[10px] font-bold ${
-                        hasPackage ? "bg-brand-blue/10 text-brand-blue" : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]"
-                      }`}
-                    >
-                      {hasPackage ? `${myEnrollments.filter((e) => e.access_type === "package").length} package` : "Free"}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">{s.device_count}/3</td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    {s.is_active ? (
-                      <span className="rounded-md bg-brand-green-light px-2 py-1 text-[10px] font-bold text-brand-green">All active</span>
-                    ) : (
-                      <span className="rounded-md bg-brand-red-light px-2 py-1 text-[10px] font-bold text-brand-red">Blocked</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <button onClick={() => toggleActive(s)} className="text-xs font-semibold text-brand-blue">
-                      {s.is_active ? "Block" : "Unblock"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {!loading && students.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
-                  No students found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        <div className="border-t border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-text-muted)]">
-          {students.length} total
-        </div>
+      <div className="mt-4">
+        <StudentsFilterCard
+          search={search}
+          onSearchChange={setSearch}
+          courseFilter={courseFilter}
+          onCourseFilterChange={setCourseFilter}
+          courses={courses}
+          accessFilter={accessFilter}
+          onAccessFilterChange={setAccessFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          dateFrom={dateFrom}
+          onDateFromChange={setDateFrom}
+          dateTo={dateTo}
+          onDateToChange={setDateTo}
+          onClear={clearFilters}
+        />
+      </div>
+
+      <div className="mt-4 hm-card overflow-hidden shadow-sm">
+        <StudentsTable
+          students={students}
+          loading={loading}
+          error={error}
+          onRetry={load}
+          onToggleActive={toggleActive}
+          togglingId={togglingId}
+        />
+        {!error && (
+          <StudentsPagination
+            page={page}
+            pageSize={pageSize}
+            count={totalCount}
+            loading={loading}
+            onPageChange={setPage}
+            onPageSizeChange={changePageSize}
+          />
+        )}
       </div>
     </div>
   );

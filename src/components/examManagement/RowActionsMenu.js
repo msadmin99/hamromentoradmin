@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export default function RowActionsMenu({ items }) {
+export default function RowActionsMenu({ items, trigger, triggerLabel = "More actions" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const visible = items.filter(Boolean);
@@ -32,10 +32,14 @@ export default function RowActionsMenu({ items }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="More actions"
-        className="rounded-lg px-2 py-1 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] focus:outline-none focus:ring-2 focus:ring-brand-blue"
+        aria-label={trigger ? undefined : triggerLabel}
+        className={
+          trigger
+            ? "rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-blue"
+            : "rounded-lg px-2 py-1 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] focus:outline-none focus:ring-2 focus:ring-brand-blue"
+        }
       >
-        ⋮
+        {trigger || "⋮"}
       </button>
       {open && (
         <div
@@ -47,11 +51,12 @@ export default function RowActionsMenu({ items }) {
               key={item.label}
               role="menuitem"
               type="button"
+              disabled={item.disabled}
               onClick={() => {
                 setOpen(false);
                 item.onClick();
               }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--color-surface-muted)] ${
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--color-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent ${
                 item.danger ? "text-brand-red" : "text-[var(--color-text)]"
               }`}
             >
