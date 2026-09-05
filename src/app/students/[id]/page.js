@@ -477,10 +477,44 @@ function DevicesTab({ student }) {
   );
 }
 
+// Maps a failed load's HTTP status to what the page shows — distinct from
+// the raw backend error message, which stays out of the UI except for the
+// generic 5xx/network case (nothing here is sensitive, but a plain "Not
+// found."/"Forbidden." from the API is less useful to an admin than a
+// concrete next step).
+function errorStateFor(status) {
+  if (status === 401) {
+    return {
+      title: "Authentication required",
+      message: "Your session has expired. Please log in again.",
+      retry: false,
+    };
+  }
+  if (status === 403) {
+    return {
+      title: "Permission denied",
+      message: "You don't have permission to view this student.",
+      retry: false,
+    };
+  }
+  if (status === 404) {
+    return {
+      title: "Student not found",
+      message: "This student doesn't exist or may have been removed.",
+      retry: false,
+    };
+  }
+  return {
+    title: "Unable to load student",
+    message: "Something went wrong loading this student's details.",
+    retry: true,
+  };
+}
+
 function StudentDetailContent() {
   const params = useParams();
   const [student, setStudent] = useState(null);
-  const [error, setError] = useState("");
+  const [errorStatus, setErrorStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("overview");
   const [toggling, setToggling] = useState(false);
@@ -489,11 +523,14 @@ function StudentDetailContent() {
 
   function load() {
     setLoading(true);
-    setError("");
+    setErrorStatus(null);
     api
       .get(`/auth/users/${params.id}/detail/`)
       .then(setStudent)
-      .catch((err) => setError(err.message || "Could not load this student."))
+      // A network failure (backend unreachable, DNS, offline) never reaches
+      // apiFetch's `error.status` assignment — status stays undefined,
+      // which errorStateFor() already treats as the generic 5xx/network case.
+      .catch((err) => setErrorStatus(err.status || 0))
       .finally(() => setLoading(false));
   }
 
@@ -524,7 +561,25 @@ function StudentDetailContent() {
       </Link>
 
       {loading && <p className="mt-4 text-sm text-[var(--color-text-muted)]">Loading…</p>}
-      {error && <p className="mt-4 rounded-lg bg-brand-red-light px-3 py-2 text-sm font-medium text-brand-red">{error}</p>}
+      {errorStatus !== null && !loading && (() => {
+        const state = errorStateFor(errorStatus);
+        return (
+          <div className="mt-4 rounded-lg bg-brand-red-light px-4 py-3">
+            <p className="text-sm font-bold text-brand-red">{state.title}</p>
+            <p className="mt-0.5 text-sm text-brand-red">{state.message}</p>
+            <div className="mt-2 flex items-center gap-3">
+              {state.retry && (
+                <button onClick={load} className="text-xs font-semibold text-brand-red underline">
+                  Try again
+                </button>
+              )}
+              <Link href="/students" className="text-xs font-semibold text-brand-red underline">
+                Back to Students
+              </Link>
+            </div>
+          </div>
+        );
+      })()}
       {savedMsg && <p className="mt-4 rounded-lg bg-brand-green-light px-3 py-2 text-sm font-medium text-brand-green">{savedMsg}</p>}
 
       {student && (
