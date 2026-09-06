@@ -116,7 +116,39 @@ const TABS = [
   { key: "payments", label: "Payments" },
   { key: "activity", label: "Activity" },
   { key: "devices", label: "Devices" },
+  { key: "verification", label: "Identity & Verification" },
 ];
+
+const VERIFICATION_STATUS_META = {
+  verified: { label: "Verified", className: "bg-brand-green-light text-brand-green" },
+  pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
+  rejected: { label: "Rejected", className: "bg-brand-red-light text-brand-red" },
+  unverified: { label: "Unverified", className: "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]" },
+};
+
+const DOCUMENT_TYPE_LABELS = {
+  citizenship: "Citizenship",
+  passport: "Passport",
+  academic_certificate: "Academic Certificate",
+  identity_document: "Identity Document",
+  other: "Other",
+};
+
+const DOCUMENT_STATUS_META = {
+  approved: { label: "Approved", className: "bg-brand-green-light text-brand-green" },
+  pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
+  rejected: { label: "Rejected", className: "bg-brand-red-light text-brand-red" },
+};
+
+function promptForRejectionReason(question) {
+  const reason = prompt(question);
+  if (reason === null) return null;
+  if (!reason.trim()) {
+    alert("A reason is required.");
+    return null;
+  }
+  return reason.trim();
+}
 
 const PURCHASE_STATUS_META = {
   unpaid: { label: "Awaiting Payment", className: "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]" },
@@ -443,6 +475,204 @@ function ActivityTab({ student }) {
   );
 }
 
+function DocumentRow({ doc, onChanged }) {
+  const [url, setUrl] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const meta = DOCUMENT_STATUS_META[doc.status] || { label: doc.status, className: "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]" };
+
+  async function reveal() {
+    if (url || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api.get(`/auth/verification-documents/${doc.id}/view/`);
+      setUrl(data.url);
+    } catch (err) {
+      setError(err.message || "Couldn't load this document.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approve() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/auth/verification-documents/${doc.id}/approve/`, {});
+      onChanged();
+    } catch (err) {
+      setError(err.message || "Could not approve.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reject() {
+    const reason = promptForRejectionReason("Reason for rejecting this document (required):");
+    if (reason === null) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/auth/verification-documents/${doc.id}/reject/`, { reason });
+      onChanged();
+    } catch (err) {
+      setError(err.message || "Could not reject.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td className="whitespace-nowrap px-4 py-2.5 font-medium text-[var(--color-text)]">
+        {DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type}
+      </td>
+      <td className="whitespace-nowrap px-4 py-2.5">
+        <span className={`rounded-md px-2 py-1 text-[10px] font-bold ${meta.className}`}>{meta.label}</span>
+      </td>
+      <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-muted)]">{formatDate(doc.uploaded_at)}</td>
+      <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-muted)]">
+        {doc.reviewed_by_name ? `${doc.reviewed_by_name} · ${formatDate(doc.reviewed_at)}` : "—"}
+        {doc.status === "rejected" && doc.rejection_reason && (
+          <span className="block italic text-brand-red">&ldquo;{doc.rejection_reason}&rdquo;</span>
+        )}
+      </td>
+      <td className="whitespace-nowrap px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {!url ? (
+            <button onClick={reveal} disabled={busy} className="text-xs font-semibold text-brand-blue">
+              {busy ? "Loading…" : "View"}
+            </button>
+          ) : (
+            <a href={url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-brand-blue">
+              Open ↗
+            </a>
+          )}
+          {doc.status !== "approved" && (
+            <button onClick={approve} disabled={busy} className="text-xs font-semibold text-brand-green">
+              Approve
+            </button>
+          )}
+          {doc.status !== "rejected" && (
+            <button onClick={reject} disabled={busy} className="text-xs font-semibold text-brand-red">
+              Reject
+            </button>
+          )}
+        </div>
+        {error && <p className="mt-0.5 text-[10px] text-brand-red">{error}</p>}
+      </td>
+    </tr>
+  );
+}
+
+function VerificationTab({ student, onChanged }) {
+  const p = student.profile || {};
+  const documents = student.verification_documents || [];
+  const statusMeta = VERIFICATION_STATUS_META[p.verification_status] || VERIFICATION_STATUS_META.unverified;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function approveProfile() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/auth/users/${student.id}/verification/approve/`, {});
+      onChanged();
+    } catch (err) {
+      setError(err.message || "Could not approve.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectProfile() {
+    const reason = promptForRejectionReason("Reason for rejecting this student's verification (required):");
+    if (reason === null) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/auth/users/${student.id}/verification/reject/`, { reason });
+      onChanged();
+    } catch (err) {
+      setError(err.message || "Could not reject.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="rounded-lg bg-[var(--color-surface-muted)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
+        Identity verification is informational only — it never affects this student&rsquo;s access to QBank, tests, or
+        courses, regardless of status.
+      </p>
+
+      <div className="hm-card flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-brand-blue text-lg font-bold text-white">
+            {p.photo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.photo} alt="" className="h-full w-full object-cover" />
+            ) : (
+              (student.first_name?.[0] || student.email?.[0] || "?").toUpperCase()
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-bold text-[var(--color-text)]">Profile verification</p>
+            <span className={`mt-0.5 inline-block rounded-md px-2 py-1 text-[10px] font-bold ${statusMeta.className}`}>{statusMeta.label}</span>
+            {p.verification_status === "rejected" && p.verification_rejection_reason && (
+              <p className="mt-1 text-xs italic text-brand-red">&ldquo;{p.verification_rejection_reason}&rdquo;</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={approveProfile} disabled={busy} className="hm-btn-primary px-3 py-1.5 text-xs">
+            {busy ? "Working…" : "Approve Verification"}
+          </button>
+          <button
+            onClick={rejectProfile}
+            disabled={busy}
+            className="rounded-lg border border-brand-red px-3 py-1.5 text-xs font-semibold text-brand-red"
+          >
+            Reject
+          </button>
+        </div>
+      </div>
+      {error && <p className="text-xs font-medium text-brand-red">{error}</p>}
+
+      <div className="hm-card overflow-x-auto">
+        <p className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-bold text-[var(--color-text)]">
+          Submitted Documents {documents.length >= 20 && <span className="font-normal text-[var(--color-text-muted)]">(latest 20)</span>}
+        </p>
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--color-surface-muted)] text-left text-xs text-[var(--color-text-muted)]">
+            <tr>
+              <th className="whitespace-nowrap px-4 py-2.5">Type</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Status</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Submitted</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Reviewed</th>
+              <th className="whitespace-nowrap px-4 py-2.5">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--color-border)]">
+            {documents.map((doc) => (
+              <DocumentRow key={doc.id} doc={doc} onChanged={onChanged} />
+            ))}
+            {documents.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
+                  No documents submitted.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function DevicesTab({ student }) {
   const devices = student.devices || [];
   return (
@@ -586,8 +816,13 @@ function StudentDetailContent() {
         <>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-blue text-lg font-bold text-white">
-                {(student.first_name?.[0] || student.email?.[0] || "?").toUpperCase()}
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-brand-blue text-lg font-bold text-white">
+                {student.profile?.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={student.profile.photo} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  (student.first_name?.[0] || student.email?.[0] || "?").toUpperCase()
+                )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -637,6 +872,7 @@ function StudentDetailContent() {
             {tab === "payments" && <PaymentsTab student={student} />}
             {tab === "activity" && <ActivityTab student={student} />}
             {tab === "devices" && <DevicesTab student={student} />}
+            {tab === "verification" && <VerificationTab student={student} onChanged={load} />}
           </div>
         </>
       )}

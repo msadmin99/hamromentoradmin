@@ -25,11 +25,34 @@ function formatDateTime(value) {
 }
 
 function Avatar({ student }) {
+  const photo = student.profile?.photo;
   return (
-    <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-blue text-xs font-bold text-white">
-      {initialsOf(student)}
+    <div className="flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-full bg-brand-blue text-xs font-bold text-white">
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photo} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initialsOf(student)
+      )}
     </div>
   );
+}
+
+const VERIFICATION_BADGE_META = {
+  verified: { label: "Verified", className: "bg-brand-green-light text-brand-green" },
+  pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
+  rejected: { label: "Rejected", className: "bg-brand-red-light text-brand-red" },
+};
+
+// Identity & Document Verification System — a small, purely informational
+// badge (no exam-access meaning at all, see accounts/tests_verification.py's
+// regression suite). Deliberately renders nothing for 'unverified' — the
+// common default state — so the table isn't full of a badge that says
+// nothing actionable for the vast majority of rows.
+function VerificationBadge({ status }) {
+  const meta = VERIFICATION_BADGE_META[status];
+  if (!meta) return null;
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${meta.className}`}>{meta.label}</span>;
 }
 
 function StatusBadge({ isActive }) {
@@ -167,9 +190,12 @@ export default function StudentsTable({ students, loading, error, onRetry, onTog
                       <div className="flex items-center gap-3">
                         <Avatar student={s} />
                         <div className="min-w-0">
-                          <Link href={`/students/${s.id}`} prefetch={false} className="block truncate font-semibold text-[var(--color-text)] hover:text-brand-blue">
-                            {fullName(s)}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link href={`/students/${s.id}`} prefetch={false} className="block truncate font-semibold text-[var(--color-text)] hover:text-brand-blue">
+                              {fullName(s)}
+                            </Link>
+                            <VerificationBadge status={s.profile?.verification_status} />
+                          </div>
                           <p className="text-[11px] text-[var(--color-text-muted)]">ID {s.id}</p>
                         </div>
                       </div>
@@ -233,9 +259,12 @@ export default function StudentsTable({ students, loading, error, onRetry, onTog
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar student={s} />
                   <div className="min-w-0">
-                    <Link href={`/students/${s.id}`} prefetch={false} className="block truncate font-semibold text-[var(--color-text)]">
-                      {fullName(s)}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <Link href={`/students/${s.id}`} prefetch={false} className="block truncate font-semibold text-[var(--color-text)]">
+                        {fullName(s)}
+                      </Link>
+                      <VerificationBadge status={s.profile?.verification_status} />
+                    </div>
                     <p className="truncate text-[11px] text-[var(--color-text-muted)]">{s.email}</p>
                   </div>
                 </div>
