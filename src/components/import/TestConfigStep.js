@@ -12,6 +12,28 @@ const EXAM_TYPES = [
   { key: "pyq", label: "Past Year Questions" },
 ];
 const DIFFICULTIES = ["", "easy", "medium", "hard"];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Daily Test schedule audit (timezone fix): `<input type="datetime-local">`
+// gives a raw, offset-less string ("2026-09-13T08:00") with no timezone
+// information at all. Sending that straight to the backend used to mean
+// Django/DRF would interpret it using the server's active timezone
+// (UTC — this app never calls timezone.activate(), confirmed), not the
+// admin's intended Nepal wall-clock time: "8:00 AM" typed here could be
+// stored as 8:00 AM UTC, ~5h45m later than intended. `new Date(value)`
+// parses that same string using the ADMIN'S OWN BROWSER timezone, and
+// `.toISOString()` converts it to a real, unambiguous UTC instant — the
+// exact technique already used correctly, elsewhere in this same Admin
+// app, by the Reschedule/Exam Sessions flow
+// (exam-management/[id]/reschedule/page.js's `new Date(...).toISOString()`
+// call) — this just brings the exam-builder's own scheduling fields onto
+// the same, already-proven pattern.
+function toUtcIso(localDatetimeValue) {
+  if (!localDatetimeValue) return null;
+  const d = new Date(localDatetimeValue);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
 
 function Checkbox({ label, checked, onChange }) {
   return (
@@ -22,6 +44,15 @@ function Checkbox({ label, checked, onChange }) {
   );
 }
 
+// Phase 5: fallback ONLY, used before /tests/exam_type_policies/ has loaded
+// (or if that fetch fails) — see the effect below, which merges the
+// canonical per-exam_type policy in once it arrives. `is_draft` here is now
+// `true`, matching the canonical, deliberately-resolved default (previously
+// `false` — this file and exam-management/page.js's emptyForm() had
+// drifted to opposite defaults; see
+// Backend/docs/PHASE5_AUDIT_AND_ARCHITECTURE.md §3 for why `true` was
+// chosen). Both files now read the same backend source of truth instead of
+// needing to be kept in sync by hand.
 function defaultConfig(batch) {
   return {
     title: "",
@@ -45,7 +76,7 @@ function defaultConfig(batch) {
     price: "",
     access_password: "",
     free_preview_questions: 0,
-    is_draft: false,
+    is_draft: true,
   };
 }
 
@@ -56,6 +87,18 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
 
   useEffect(() => {
     api.get("/courses/").then(setCourses);
+    if (initialConfig) return; // resuming an already-configured draft — never overwrite it with fresh policy
+    api
+      .get("/tests/exam_type_policies/")
+      .then((data) => {
+        const normalized = {};
+        for (const [examType, policy] of Object.entries(data || {})) {
+          normalized[examType] = { ...policy, price: policy.price == null ? "" : policy.price };
+        }
+        setForm((f) => ({ ...f, ...(normalized[f.exam_type] || {}) }));
+      })
+      .catch(() => {}); // fallback defaults in defaultConfig() cover this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleContinue() {
@@ -76,6 +119,21 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
       return;
     }
     setError("");
+    const scheduledStartIso = toUtcIso(form.scheduled_start);
+    // Daily Test schedule audit: prefer automatically deriving
+    // scheduled_end = scheduled_start + 24h for Daily Test specifically —
+    // its own requirement is a hard 24-hour window, not the flexible,
+    // admin-chosen-length window Grand/Mock/PYQ use. Deriving it here
+    // (rather than trusting two independently-typed inputs to agree)
+    // makes an inconsistent Daily Test window structurally impossible
+    // for anything created through this screen. Every other exam type's
+    // scheduled_end stays fully manual, unchanged.
+    const scheduledEndIso =
+      form.exam_type === "daily"
+        ? scheduledStartIso
+          ? new Date(new Date(scheduledStartIso).getTime() + DAY_MS).toISOString()
+          : null
+        : toUtcIso(form.scheduled_end);
     onContinue({
       ...form,
       duration_minutes: Number(form.duration_minutes) || 60,
@@ -83,8 +141,8 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
       max_attempts: Number(form.max_attempts) || 1,
       free_preview_questions: Number(form.free_preview_questions) || 0,
       price: form.price === "" ? null : form.price,
-      scheduled_start: form.scheduled_start || null,
-      scheduled_end: form.scheduled_end || null,
+      scheduled_start: scheduledStartIso,
+      scheduled_end: scheduledEndIso,
     });
   }
 
@@ -198,7 +256,9 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled start (optional)</label>
+              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
+                {form.exam_type === "daily" ? "Opens at (optional, Nepal time)" : "Scheduled start (optional)"}
+              </label>
               <input
                 type="datetime-local"
                 value={form.scheduled_start}
@@ -206,15 +266,30 @@ export default function TestConfigStep({ batch, initialConfig, onContinue, onBac
                 className="hm-input"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled end (optional)</label>
-              <input
-                type="datetime-local"
-                value={form.scheduled_end}
-                onChange={(e) => setForm((f) => ({ ...f, scheduled_end: e.target.value }))}
-                className="hm-input"
-              />
-            </div>
+            {form.exam_type === "daily" ? (
+              // Daily Test schedule audit: scheduled_end is auto-derived
+              // (scheduled_start + 24h, computed on submit — see
+              // toUtcIso/handleContinue above) rather than a second,
+              // independently-typed field, so a Daily Test's window can
+              // never be created inconsistent with its own 24-hour
+              // requirement.
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Closes</label>
+                <p className="hm-input flex items-center text-[var(--color-text-muted)]">
+                  {form.scheduled_start ? "Automatically, 24 hours after opening" : "Set an opening time first"}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled end (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={form.scheduled_end}
+                  onChange={(e) => setForm((f) => ({ ...f, scheduled_end: e.target.value }))}
+                  className="hm-input"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-4">
