@@ -9,6 +9,7 @@ const STATUS_STYLES = {
   warning: "bg-yellow-100 text-yellow-800",
   error: "bg-brand-red-light text-brand-red",
   duplicate: "bg-purple-100 text-purple-800",
+  skipped: "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
 };
 
 const DEDUP_OPTIONS = [
@@ -16,6 +17,18 @@ const DEDUP_OPTIONS = [
   { key: "replace", label: "Replace" },
   { key: "keep_both", label: "Keep Both" },
 ];
+
+// A row's underlying `status` never changes just because the admin chose
+// to bypass it (Feature 1/2's whole point — see ImportRow.error_skipped's
+// backend docstring) — this is purely a display label so "Skipped" shows
+// wherever it's actually true, without inventing a new row.status value
+// the rest of the app (filters, counts, confirm-eligibility) would also
+// have to learn about.
+function displayStatus(row) {
+  if (row.status === "error" && row.error_skipped) return "skipped";
+  if (row.status === "duplicate" && row.dedup_action === "skip") return "skipped";
+  return row.status;
+}
 
 function stripTags(html) {
   return (html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -31,6 +44,17 @@ function TaxonomyPanel({ batch, onChanged }) {
   const [topicId, setTopicId] = useState(batch.topic_id ? String(batch.topic_id) : "");
   const [courseIds, setCourseIds] = useState((batch.course_ids || []).map(String));
   const [saving, setSaving] = useState(false);
+  // Bulk-import taxonomy audit Phase 3: duplicate checking runs off the
+  // request path now — dedupStatus mirrors the batch's dedup_status for
+  // whichever generation is currently being polled ("" = nothing to poll,
+  // e.g. no Subject selected yet, or the last known dedup already
+  // completed and nothing has changed since). pollGeneration is the
+  // dedup_generation the active poll loop below is watching; changing it
+  // (a new Subject change, or clearing it once complete) is what starts/
+  // stops the effect — the same "poll until terminal, clean up on
+  // unmount" shape ProgressStep.js already uses for import progress.
+  const [dedupStatus, setDedupStatus] = useState(batch.dedup_status || "");
+  const [pollGeneration, setPollGeneration] = useState(null);
 
   useEffect(() => {
     api.get("/subjects/").then(setSubjects);
@@ -49,6 +73,40 @@ function TaxonomyPanel({ batch, onChanged }) {
     api.get(`/topics/?chapter=${chapterId}`).then(setTopics);
   }, [chapterId]);
 
+  // Polls /status/ (the same endpoint + cadence ProgressStep.js already
+  // uses for import progress) until the CURRENT generation reaches
+  // 'completed'. If the batch's dedup_generation ever stops matching the
+  // generation this effect started for — a newer Subject change moved
+  // it on — this poll simply stops without acting; the newer save()
+  // call has already set pollGeneration to its own, later value, which
+  // re-runs this effect fresh for that generation instead.
+  useEffect(() => {
+    if (pollGeneration == null) return undefined;
+    let cancelled = false;
+    function poll() {
+      api.get(`/import-batches/${batch.id}/status/`).then((data) => {
+        if (cancelled) return;
+        if (data.dedup_generation !== pollGeneration) {
+          return; // superseded — a later effect run owns the current generation
+        }
+        setDedupStatus(data.dedup_status);
+        if (data.dedup_status === "completed") {
+          onChanged(data); // refresh parent's batch + (via handleTaxonomyChanged) reload rows
+          setPollGeneration(null);
+          return;
+        }
+        setTimeout(() => {
+          if (!cancelled) poll();
+        }, 1200);
+      });
+    }
+    poll();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollGeneration, batch.id]);
+
   async function save(next) {
     setSaving(true);
     try {
@@ -59,6 +117,10 @@ function TaxonomyPanel({ batch, onChanged }) {
         course_ids: (next.courseIds || []).map(Number),
       });
       onChanged(updated);
+      setDedupStatus(updated.dedup_status || "");
+      if (updated.dedup_status === "pending" || updated.dedup_status === "processing") {
+        setPollGeneration(updated.dedup_generation);
+      }
     } finally {
       setSaving(false);
     }
@@ -98,6 +160,12 @@ function TaxonomyPanel({ batch, onChanged }) {
       <p className="mt-1 text-xs text-[var(--color-text-muted)]">
         Applied to every question in this import. Sourced from Subject Management — nothing new is created here.
       </p>
+      {(dedupStatus === "pending" || dedupStatus === "processing") && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-brand-blue">
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-brand-blue border-t-transparent" />
+          Duplicate check in progress… Subject, Chapter and Topic stay editable while this runs.
+        </p>
+      )}
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <label className="mb-1 block text-[11px] font-semibold text-[var(--color-text-muted)]">Subject</label>
@@ -228,6 +296,33 @@ function RowDetail({ row, onSave, onDelete }) {
         </ul>
       )}
 
+      {row.status === "error" && (
+        <div className="mb-2 flex items-center gap-2">
+          {row.error_skipped ? (
+            <>
+              <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                Status: Skipped — excluded from this import, not deleted. The error above still shows why.
+              </span>
+              <button
+                type="button"
+                onClick={() => onSave(row.id, { error_skipped: false })}
+                className="hm-btn-outline flex-none px-2 py-1 text-[11px]"
+              >
+                Undo Skip
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onSave(row.id, { error_skipped: true })}
+              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text)]"
+            >
+              Skip this error — keep it in the file, just don&apos;t import it
+            </button>
+          )}
+        </div>
+      )}
+
       <label className="mb-1 block text-[11px] font-semibold text-[var(--color-text-muted)]">Question</label>
       <RichEditor value={data.text_html} onChange={(html) => update({ text_html: html })} placeholder="Question text" minHeight={70} />
 
@@ -325,6 +420,15 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
+  // Bulk-action audit (Features 1/2/5): stable row.id-based Sets, never
+  // array indexes — a row's index in `rows` shifts under filtering,
+  // paging, editing, and deleting, but its id never does. Two completely
+  // independent Sets (not one shared "selected" concept) so a duplicate
+  // selection can never bleed into an error selection or vice versa.
+  const [selectedDuplicateIds, setSelectedDuplicateIds] = useState(() => new Set());
+  const [selectedErrorIds, setSelectedErrorIds] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState("");
   const pageSize = 25;
 
   function load() {
@@ -364,6 +468,117 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
     setExpandedId((prev) => (prev === rowId ? null : prev));
   }
 
+  function toggleDuplicateSelected(id) {
+    setSelectedDuplicateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleErrorSelected(id) {
+    setSelectedErrorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // "Select All" means every row of that status across the WHOLE batch,
+  // not just the 25 on this page — fetches the full id list (ids_only=1,
+  // unpaginated) rather than trying to reconstruct it from `rows`.
+  async function selectAllDuplicates() {
+    setBulkError("");
+    const data = await api.get(`/import-batches/${batch.id}/rows/?status=duplicate&ids_only=1`);
+    setSelectedDuplicateIds(new Set(data.ids));
+  }
+
+  async function selectAllErrors() {
+    setBulkError("");
+    const data = await api.get(`/import-batches/${batch.id}/rows/?status=error&ids_only=1`);
+    setSelectedErrorIds(new Set(data.ids));
+  }
+
+  async function applyBulkDedupAction(action) {
+    if (selectedDuplicateIds.size === 0) return;
+    if (
+      action === "replace" &&
+      !confirm(
+        `Replace ${selectedDuplicateIds.size} duplicate question(s)?\n\nThis action will apply Replace to all selected duplicate questions.`,
+      )
+    ) {
+      return;
+    }
+    if (
+      action === "remove" &&
+      !confirm(
+        `Remove ${selectedDuplicateIds.size} duplicate question(s)?\n\nThis removes them from this import batch so they won't be processed. This can't be undone here — you'd need to re-upload the file to get them back.`,
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      const updatedBatch = await api.post(`/import-batches/${batch.id}/rows/bulk-dedup-action/`, {
+        row_ids: Array.from(selectedDuplicateIds),
+        action,
+      });
+      setBatch(updatedBatch);
+      setSelectedDuplicateIds(new Set());
+      load();
+    } catch (err) {
+      setBulkError(err.message || "Could not apply the bulk action to the selected duplicates.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function applyBulkSkipError(skipped) {
+    if (selectedErrorIds.size === 0) return;
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      const updatedBatch = await api.post(`/import-batches/${batch.id}/rows/bulk-skip-error/`, {
+        row_ids: Array.from(selectedErrorIds),
+        skipped,
+      });
+      setBatch(updatedBatch);
+      setSelectedErrorIds(new Set());
+      load();
+    } catch (err) {
+      setBulkError(err.message || "Could not update the selected error rows.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // A convenient shortcut combining "select all" + "skip" into one click,
+  // per the spec's preferred single-button option alongside the
+  // select-then-act flow above — both end up calling the exact same
+  // bulk-skip-error endpoint.
+  async function skipAllErrorsNow() {
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      const idsData = await api.get(`/import-batches/${batch.id}/rows/?status=error&ids_only=1`);
+      if (idsData.ids.length === 0) return;
+      const updatedBatch = await api.post(`/import-batches/${batch.id}/rows/bulk-skip-error/`, {
+        row_ids: idsData.ids,
+        skipped: true,
+      });
+      setBatch(updatedBatch);
+      setSelectedErrorIds(new Set());
+      load();
+    } catch (err) {
+      setBulkError(err.message || "Could not skip all error rows.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   function handleTaxonomyChanged(updatedBatch) {
     setBatch(updatedBatch);
     setConfirmError("");
@@ -371,10 +586,23 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
   }
 
   const taxonomyComplete = Boolean(batch.subject_id && batch.chapter_id && batch.topic_id);
+  // Bulk-import taxonomy audit Phase 3: dedup_status only ever reads
+  // 'completed' for the batch's CURRENT dedup_generation — a stale
+  // generation's completion write is rejected server-side (see
+  // ImportBatchTaxonomyView.patch / import_dedup_tasks.run_dedup_task's
+  // generation-gated update), so this single check on the latest fetched
+  // `batch` already covers "completed" + "current generation" + "Subject
+  // hasn't changed since" together — no separate generation comparison
+  // needed on top of it.
+  const dedupComplete = !batch.subject_id || batch.dedup_status === "completed";
 
   async function handleConfirm() {
     if (!taxonomyComplete) {
       setConfirmError("Please select Subject, Chapter and Topic before importing.");
+      return;
+    }
+    if (!dedupComplete) {
+      setConfirmError("Duplicate check is still in progress for the selected Subject — please wait for it to complete.");
       return;
     }
     if (mode === "create_test") {
@@ -405,7 +633,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
     <div className="flex flex-col gap-4">
       <TaxonomyPanel batch={batch} onChanged={handleTaxonomyChanged} />
 
-      <div className="hm-card grid grid-cols-2 gap-3 p-4 sm:grid-cols-5">
+      <div className="hm-card grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <div>
           <p className="text-xs text-[var(--color-text-muted)]">Total Questions</p>
           <p className="text-lg font-extrabold text-[var(--color-text)]">{batch.total_rows}</p>
@@ -426,6 +654,10 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
           <p className="text-xs text-[var(--color-text-muted)]">Duplicates</p>
           <p className="text-lg font-extrabold text-purple-700">{counts.duplicate || 0}</p>
         </div>
+        <div>
+          <p className="text-xs text-[var(--color-text-muted)]">Skipped</p>
+          <p className="text-lg font-extrabold text-[var(--color-text-muted)]">{batch.skipped_projected_count || 0}</p>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -445,22 +677,132 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
         ))}
       </div>
 
+      {statusFilter === "duplicate" && (counts.duplicate || 0) > 0 && (
+        <div className="hm-card flex flex-wrap items-center gap-3 p-3">
+          <button type="button" onClick={selectAllDuplicates} disabled={bulkBusy} className="hm-btn-outline px-3 py-1 text-xs disabled:opacity-50">
+            Select All Duplicates
+          </button>
+          {selectedDuplicateIds.size > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSelectedDuplicateIds(new Set())}
+                disabled={bulkBusy}
+                className="text-xs font-semibold text-[var(--color-text-muted)] underline disabled:opacity-50"
+              >
+                Clear Selection
+              </button>
+              <span className="text-xs font-semibold text-[var(--color-text)]">
+                {selectedDuplicateIds.size} duplicate{selectedDuplicateIds.size === 1 ? "" : "s"} selected
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                {DEDUP_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => applyBulkDedupAction(opt.key)}
+                    disabled={bulkBusy}
+                    className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text)] disabled:opacity-50"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => applyBulkDedupAction("remove")}
+                  disabled={bulkBusy}
+                  className="rounded-md border border-brand-red px-2.5 py-1 text-xs font-semibold text-brand-red disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
+      {statusFilter === "error" && (counts.error || 0) > 0 && (
+        <div className="hm-card flex flex-wrap items-center gap-3 p-3">
+          <span className="text-xs font-semibold text-[var(--color-text-muted)]">Errors: {counts.error}</span>
+          <button type="button" onClick={selectAllErrors} disabled={bulkBusy} className="hm-btn-outline px-3 py-1 text-xs disabled:opacity-50">
+            Select All Errors
+          </button>
+          <button type="button" onClick={skipAllErrorsNow} disabled={bulkBusy} className="hm-btn-outline px-3 py-1 text-xs disabled:opacity-50">
+            Skip All Errors
+          </button>
+          {selectedErrorIds.size > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSelectedErrorIds(new Set())}
+                disabled={bulkBusy}
+                className="text-xs font-semibold text-[var(--color-text-muted)] underline disabled:opacity-50"
+              >
+                Clear Selection
+              </button>
+              <span className="text-xs font-semibold text-[var(--color-text)]">
+                {selectedErrorIds.size} error{selectedErrorIds.size === 1 ? "" : "s"} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => applyBulkSkipError(true)}
+                disabled={bulkBusy}
+                className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text)] disabled:opacity-50"
+              >
+                Skip Selected Errors
+              </button>
+              <button
+                type="button"
+                onClick={() => applyBulkSkipError(false)}
+                disabled={bulkBusy}
+                className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text)] disabled:opacity-50"
+              >
+                Undo Skip Selected
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {bulkError && <p className="text-xs font-medium text-brand-red">{bulkError}</p>}
+
       <div className="hm-card overflow-hidden">
         {loading && <p className="p-4 text-sm text-[var(--color-text-muted)]">Loading…</p>}
         {!loading &&
-          rows.map((row) => (
-            <div key={row.id} className="border-b border-[var(--color-border)] p-3 last:border-0">
-              <button onClick={() => setExpandedId(expandedId === row.id ? null : row.id)} className="flex w-full items-center gap-3 text-left">
-                <span className="w-8 flex-none text-xs text-[var(--color-text-muted)]">#{row.row_number}</span>
-                <span className={`flex-none rounded-md px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[row.status] || ""}`}>
-                  {row.status.toUpperCase()}
-                </span>
-                <span className="flex-1 truncate text-sm text-[var(--color-text)]">{stripTags(row.data.text_html) || "(blank question)"}</span>
-                <span className="flex-none text-[var(--color-text-muted)]">{expandedId === row.id ? "▲" : "▼"}</span>
-              </button>
-              {expandedId === row.id && <RowDetail row={row} onSave={saveRow} onDelete={deleteRow} />}
-            </div>
-          ))}
+          rows.map((row) => {
+            const status = displayStatus(row);
+            const selectable = row.status === "duplicate" ? "duplicate" : row.status === "error" ? "error" : null;
+            const checked = selectable === "duplicate" ? selectedDuplicateIds.has(row.id) : selectable === "error" ? selectedErrorIds.has(row.id) : false;
+            return (
+              <div key={row.id} className="border-b border-[var(--color-border)] p-3 last:border-0">
+                <div className="flex w-full items-center gap-3 text-left">
+                  {selectable && (
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => (selectable === "duplicate" ? toggleDuplicateSelected(row.id) : toggleErrorSelected(row.id))}
+                      aria-label={`Select ${selectable} question #${row.row_number}`}
+                      className="h-4 w-4 flex-none accent-brand-blue"
+                    />
+                  )}
+                  <button
+                    onClick={() => setExpandedId(expandedId === row.id ? null : row.id)}
+                    className="flex flex-1 items-center gap-3 text-left"
+                  >
+                    <span className="w-8 flex-none text-xs text-[var(--color-text-muted)]">#{row.row_number}</span>
+                    <span className={`flex-none rounded-md px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[status] || ""}`}>
+                      {status.toUpperCase()}
+                    </span>
+                    <span className="flex-1 truncate text-sm text-[var(--color-text)]">
+                      {stripTags(row.data.text_html) || "(blank question)"}
+                    </span>
+                    <span className="flex-none text-[var(--color-text-muted)]">{expandedId === row.id ? "▲" : "▼"}</span>
+                  </button>
+                </div>
+                {expandedId === row.id && <RowDetail row={row} onSave={saveRow} onDelete={deleteRow} />}
+              </div>
+            );
+          })}
         {!loading && rows.length === 0 && <p className="p-4 text-center text-sm text-[var(--color-text-muted)]">No rows match this filter.</p>}
       </div>
 
@@ -490,6 +832,11 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
       {!taxonomyComplete && (
         <p className="text-xs font-medium text-brand-red">Please select Subject, Chapter and Topic before importing.</p>
       )}
+      {taxonomyComplete && !dedupComplete && (
+        <p className="text-xs font-medium text-brand-blue">
+          Duplicate check is still in progress for the selected Subject — Import will be available once it completes.
+        </p>
+      )}
       {confirmError && <p className="text-sm font-medium text-brand-red">{confirmError}</p>}
 
       <div className="flex items-center justify-end gap-3">
@@ -498,7 +845,17 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
         </button>
         <button
           onClick={handleConfirm}
-          disabled={confirming || !taxonomyComplete || (counts.error || 0) === batch.total_rows}
+          disabled={
+            confirming ||
+            !taxonomyComplete ||
+            !dedupComplete ||
+            // Feature 2, item 6: once every Error row has been explicitly
+            // skipped, this must no longer block Import — unskipped_error_count
+            // (not the raw error count, which never changes just from
+            // skipping — see ImportRow.error_skipped's docstring) is what
+            // actually reflects that.
+            (batch.unskipped_error_count ?? counts.error ?? 0) === batch.total_rows
+          }
           className="hm-btn-primary"
         >
           {mode === "create_test"
