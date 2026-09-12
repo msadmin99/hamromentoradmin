@@ -798,6 +798,21 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
                     </span>
                     <span className="flex-none text-[var(--color-text-muted)]">{expandedId === row.id ? "▲" : "▼"}</span>
                   </button>
+                  {row.status === "error" && (
+                    // Visible without expanding the row — the same Skip
+                    // control also lives in RowDetail (with the fuller
+                    // "excluded, not deleted" explanation) for anyone who
+                    // does expand, but a Skip action needs to be
+                    // discoverable at a glance across a whole Error list,
+                    // the same way the STATUS badge already is.
+                    <button
+                      type="button"
+                      onClick={() => saveRow(row.id, { error_skipped: !row.error_skipped })}
+                      className="flex-none rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text)]"
+                    >
+                      {row.error_skipped ? "Undo Skip" : "Skip"}
+                    </button>
+                  )}
                 </div>
                 {expandedId === row.id && <RowDetail row={row} onSave={saveRow} onDelete={deleteRow} />}
               </div>

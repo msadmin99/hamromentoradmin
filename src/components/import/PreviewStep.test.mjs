@@ -118,6 +118,20 @@ test("Feature 2: error rows can be skipped individually and in bulk without dele
     assert.match(src, /function displayStatus\(row\) \{/);
     assert.match(src, /if \(row\.status === "error" && row\.error_skipped\) return "skipped";/);
   });
+
+  await t.test("a Skip/Undo Skip control is visible on the COLLAPSED row, not only inside the expanded detail (Part B root-cause fix: discoverability)", () => {
+    const collapsedRowBlock = src.slice(src.indexOf("rows.map((row) => {"), src.indexOf("{expandedId === row.id && <RowDetail"));
+    assert.match(collapsedRowBlock, /row\.status === "error" && \(/);
+    assert.match(collapsedRowBlock, /onClick=\{\(\) => saveRow\(row\.id, \{ error_skipped: !row\.error_skipped \}\)\}/);
+    assert.match(collapsedRowBlock, /\{row\.error_skipped \? "Undo Skip" : "Skip"\}/);
+  });
+
+  await t.test("the collapsed-row Skip button is a sibling of the expand-toggle, not nested inside it (clicking Skip must not also toggle expand)", () => {
+    const collapsedRowBlock = src.slice(src.indexOf("rows.map((row) => {"), src.indexOf("{expandedId === row.id && <RowDetail"));
+    const toggleButtonEnd = collapsedRowBlock.indexOf("</button>");
+    const skipButtonIndex = collapsedRowBlock.indexOf('onClick={() => saveRow(row.id, { error_skipped:');
+    assert.ok(skipButtonIndex > toggleButtonEnd, "collapsed-row Skip button must render after the expand-toggle button closes");
+  });
 });
 
 test("Feature 2, item 6: the Import button unblocks once all errors are skipped", async (t) => {
