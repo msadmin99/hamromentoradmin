@@ -304,10 +304,10 @@ function PlansContent() {
                 </select>
               </div>
             </div>
-            {form.product_type === "mock_test" && (
+            {(form.product_type === "mock_test" || form.product_type === "daily_test") && (
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">
-                  Mock tests included (blank = unlimited)
+                  Tests included
                 </label>
                 <input
                   type="number"
@@ -316,7 +316,11 @@ function PlansContent() {
                   onChange={(e) => setForm((f) => ({ ...f, mock_test_quota: e.target.value }))}
                   className="hm-input"
                   placeholder="e.g. 30"
+                  required
                 />
+                <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+                  Required — the student Membership &amp; Store page only shows Daily Test / Mock Test plans that have this set.
+                </p>
               </div>
             )}
             <div>
