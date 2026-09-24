@@ -109,7 +109,7 @@ function DeviceCount({ count }) {
   );
 }
 
-function ActionButtons({ student, onToggleActive, toggling }) {
+function ActionButtons({ student, onToggleActive, toggling, canDelete, onDelete }) {
   return (
     <div className="flex items-center justify-end gap-1">
       <Link
@@ -143,6 +143,11 @@ function ActionButtons({ student, onToggleActive, toggling }) {
             onClick: () => onToggleActive(student),
             disabled: toggling,
           },
+          canDelete && {
+            label: "🗑️ Delete account",
+            onClick: () => onDelete(student),
+            danger: true,
+          },
         ]}
       />
     </div>
@@ -161,7 +166,7 @@ function SkeletonRows({ count = 8 }) {
   ));
 }
 
-export default function StudentsTable({ students, loading, error, onRetry, onToggleActive, togglingId }) {
+export default function StudentsTable({ students, loading, error, onRetry, onToggleActive, togglingId, canDelete, onDelete }) {
   return (
     <>
       {/* Desktop / tablet */}
@@ -221,7 +226,7 @@ export default function StudentsTable({ students, loading, error, onRetry, onTog
                       <p className="text-[11px] text-[var(--color-text-muted)]">{joined.time}</p>
                     </td>
                     <td className="px-4 py-3.5">
-                      <ActionButtons student={s} onToggleActive={onToggleActive} toggling={togglingId === s.id} />
+                      <ActionButtons student={s} onToggleActive={onToggleActive} toggling={togglingId === s.id} canDelete={canDelete} onDelete={onDelete} />
                     </td>
                   </tr>
                 );
@@ -268,7 +273,7 @@ export default function StudentsTable({ students, loading, error, onRetry, onTog
                     <p className="truncate text-[11px] text-[var(--color-text-muted)]">{s.email}</p>
                   </div>
                 </div>
-                <ActionButtons student={s} onToggleActive={onToggleActive} toggling={togglingId === s.id} />
+                <ActionButtons student={s} onToggleActive={onToggleActive} toggling={togglingId === s.id} canDelete={canDelete} onDelete={onDelete} />
               </div>
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 <CourseBadges enrollments={s.enrollments || []} />

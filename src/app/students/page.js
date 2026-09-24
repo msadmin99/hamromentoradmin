@@ -1,16 +1,27 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import StudentsFilterCard from "@/components/students/StudentsFilterCard";
 import StudentsPagination from "@/components/students/StudentsPagination";
 import StudentsTable from "@/components/students/StudentsTable";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 const DEFAULT_PAGE_SIZE = 20;
 
+// Matches RequireStaff's own isTopTier() check — permanent delete is
+// Super-Admin-only (see AdminUserViewSet.get_permissions on the backend);
+// this only decides whether to show the option, the API enforces it
+// either way.
+function isSuperAdmin(user) {
+  return Boolean(user) && (user.is_superuser || !user.admin_role || user.admin_role === "super_admin");
+}
+
 function StudentsContent() {
+  const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -25,6 +36,7 @@ function StudentsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [togglingId, setTogglingId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
     api.get("/courses/").then(setCourses).catch(() => {});
@@ -88,6 +100,11 @@ function StudentsContent() {
     } finally {
       setTogglingId(null);
     }
+  }
+
+  async function runDeleteStudent(id) {
+    await api.del(`/auth/users/${id}/`);
+    load();
   }
 
   function changePageSize(next) {
@@ -157,6 +174,8 @@ function StudentsContent() {
           onRetry={load}
           onToggleActive={toggleActive}
           togglingId={togglingId}
+          canDelete={isSuperAdmin(user)}
+          onDelete={setDeleteTarget}
         />
         {!error && (
           <StudentsPagination
@@ -169,6 +188,23 @@ function StudentsContent() {
           />
         )}
       </div>
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          itemLabel={`${deleteTarget.first_name || ""} ${deleteTarget.last_name || ""}`.trim() || deleteTarget.email}
+          requireTyped
+          consequences={[
+            "Permanently removes this student's account and login access.",
+            "Deletes their own QBank/test history, enrollments, and notifications along with it.",
+            "Blocked automatically if this student has any purchase/payment history — deactivate instead to preserve financial records.",
+          ]}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            await runDeleteStudent(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
