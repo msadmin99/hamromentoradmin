@@ -14,7 +14,6 @@ const PRODUCT_TYPE_LABELS = {
   pyq: "Past Year Questions",
 };
 const PRODUCT_TYPE_ORDER = ["qbank", "mock_test", "daily_test", "pyq", "video"];
-const MAX_DISCOUNT_PERCENT = 35;
 
 function emptyForm(courseId) {
   return {
@@ -115,10 +114,6 @@ function ComboPlansContent() {
       setError("Select at least 2 plans (across different product types) for this combo.");
       return;
     }
-    if (Number(form.discount_percent) > MAX_DISCOUNT_PERCENT) {
-      setError(`Discount cannot exceed ${MAX_DISCOUNT_PERCENT}%.`);
-      return;
-    }
     setSaving(true);
     const payload = {
       name: form.name, course: Number(form.course), plans: selectedPlanIds.map(Number),
@@ -152,7 +147,7 @@ function ComboPlansContent() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-[var(--color-text)]">🎁 Combo Plans</h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Bundle several product plans into one discounted package — e.g. QBank + Mock Tests + PYQ at up to {MAX_DISCOUNT_PERCENT}% off.
+            Bundle several product plans into one discounted package — e.g. QBank + Mock Tests + PYQ at a custom discount.
           </p>
         </div>
         <button onClick={openCreate} className="hm-btn-primary">
@@ -262,13 +257,11 @@ function ComboPlansContent() {
                 <input
                   type="number"
                   min={1}
-                  max={MAX_DISCOUNT_PERCENT}
                   required
                   value={form.discount_percent}
                   onChange={(e) => setForm((f) => ({ ...f, discount_percent: e.target.value }))}
                   className="hm-input"
                 />
-                <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">Capped at {MAX_DISCOUNT_PERCENT}%.</p>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Display order</label>
