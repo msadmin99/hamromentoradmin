@@ -90,6 +90,7 @@ function normalizeStandaloneRow(t) {
     participant_count: t.attempts_used,
     status: t.is_draft ? "draft" : "published",
     courses_detail: t.courses_detail,
+    scheduled_start: t.scheduled_start || null,
     hasHistory: false,
     raw: t,
   };
@@ -209,6 +210,13 @@ function ExamManagementContent() {
     if (filters.access) params.set("access", filters.access);
     if (tab !== "all") params.set("exam_type", tab);
     if (dataSource === "standalone") params.set("standalone", "true");
+    // Daily Test tab only: soonest-scheduled first, so an admin reviewing
+    // this tab sees what's coming up next. Scoped to this one request via
+    // an explicit query param — every other tab (and every other caller of
+    // /tests/browse/) keeps the endpoint's default "-scheduled_start"
+    // (newest-first) ordering untouched. Applied server-side (not just in
+    // the client) so it stays correct across pagination pages too.
+    if (dataSource === "standalone" && tab === "daily") params.set("ordering", "scheduled_start");
 
     const path = `${dataSource === "templates" ? "/exam-templates/browse/" : "/tests/browse/"}?${params.toString()}`;
     api

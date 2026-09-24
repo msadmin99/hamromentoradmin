@@ -89,6 +89,7 @@ export default function ExamTable({
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Questions</th>
               <th className="px-4 py-3">Duration</th>
+              <th className="px-4 py-3">Scheduled Date</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Participants</th>
               <th className="px-4 py-3 text-right">Actions</th>
@@ -98,7 +99,7 @@ export default function ExamTable({
             {loading &&
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`skeleton-${i}`} aria-hidden>
-                  {Array.from({ length: 8 }).map((__, j) => (
+                  {Array.from({ length: 9 }).map((__, j) => (
                     <td key={j} className="px-4 py-3">
                       <div className="h-3 w-full animate-pulse rounded bg-[var(--color-surface-muted)]" />
                     </td>
@@ -122,6 +123,7 @@ export default function ExamTable({
                   </td>
                   <td className="px-4 py-3">{row.question_count}</td>
                   <td className="px-4 py-3 whitespace-nowrap">{row.duration_minutes ? `${row.duration_minutes} min` : "—"}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{formatDate(row.scheduled_start)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />
                   </td>
@@ -150,7 +152,7 @@ export default function ExamTable({
               ))}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center">
+                <td colSpan={9} className="px-4 py-10 text-center">
                   <p className="text-sm font-semibold text-[var(--color-text)]">No exams found</p>
                   <p className="mt-1 text-xs text-[var(--color-text-muted)]">{emptyReason}</p>
                 </td>
@@ -194,6 +196,7 @@ export default function ExamTable({
               <p className="mt-2 text-xs text-[var(--color-text-muted)]">
                 {row.question_count} questions · {row.duration_minutes ? `${row.duration_minutes} min` : "no timer"} ·{" "}
                 {row.participant_count} participants
+                {row.scheduled_start && <> · Scheduled {formatDate(row.scheduled_start)}</>}
               </p>
             </div>
           ))}
