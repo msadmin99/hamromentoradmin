@@ -1,6 +1,7 @@
 "use client";
 
 import katex from "katex";
+import { trivialMathToText } from "@/lib/trivialMath";
 import Modal from "@/components/Modal";
 
 const REFERENCE_ICONS = { book: "📖", paper: "📄", video: "🎥", link: "🔗" };
@@ -36,6 +37,10 @@ function renderInlineLatex(html) {
   out = out.replace(/\$([^$\n]+?)\$/g, (match, expr) => {
     const cleaned = stripEmbeddedTags(expr).trim();
     if (!cleaned) return match;
+    // Plain numbers/quantities in math delimiters stay ordinary text, same as
+    // the student view (Frontend src/lib/mathDelimiters.js).
+    const plain = trivialMathToText(cleaned);
+    if (plain !== null) return plain;
     try {
       return katex.renderToString(cleaned, { throwOnError: false, displayMode: false });
     } catch {
