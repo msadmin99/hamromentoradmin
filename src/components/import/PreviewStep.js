@@ -236,8 +236,25 @@ function TaxonomyPanel({ batch, onChanged }) {
   );
 }
 
+// Real reported bug: an admin reviewing Preview & Validate had no way to
+// tell whether a diagram-only question/option/explanation actually
+// carried its picture — the boxes just looked blank (RichEditor renders
+// `text_html` only, and a diagram-only item has no text_html at all).
+// Read-only by design: this screen edits `text_html` via RichEditor, but
+// there's no matching "replace this image" upload control here — that's
+// deliberately out of scope for this fix, which only needed to make an
+// already-correctly-extracted image visible before confirming.
+function ImagePreview({ src, label }) {
+  if (!src) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={label} className="mt-1.5 max-h-40 rounded-md border border-[var(--color-border)] object-contain" />
+  );
+}
+
 function RowDetail({ row, onSave, onDelete }) {
   const [data, setData] = useState(row.data);
+  const imageUrls = row.image_urls || {};
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -325,6 +342,7 @@ function RowDetail({ row, onSave, onDelete }) {
 
       <label className="mb-1 block text-[11px] font-semibold text-[var(--color-text-muted)]">Question</label>
       <RichEditor value={data.text_html} onChange={(html) => update({ text_html: html })} placeholder="Question text" minHeight={70} />
+      <ImagePreview src={imageUrls.question_image_url} label="Question diagram" />
 
       <p className="mb-1.5 mt-3 text-[11px] font-semibold text-[var(--color-text-muted)]">
         Options — click the letter to mark correct (multiple allowed)
@@ -352,6 +370,7 @@ function RowDetail({ row, onSave, onDelete }) {
                   placeholder={`Option ${i + 1}`}
                   minHeight={44}
                 />
+                <ImagePreview src={(imageUrls.option_image_urls || [])[i]} label={`Option ${String.fromCharCode(65 + i)} diagram`} />
               </div>
               <button
                 type="button"
@@ -377,6 +396,7 @@ function RowDetail({ row, onSave, onDelete }) {
           placeholder="Explanation — shown to students after they attempt this question"
           minHeight={70}
         />
+        <ImagePreview src={imageUrls.explanation_image_url} label="Explanation diagram" />
       </div>
 
       {row.status === "duplicate" && (
