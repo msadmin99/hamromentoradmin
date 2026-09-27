@@ -1,55 +1,14 @@
 "use client";
 
-import katex from "katex";
-import { trivialMathToText } from "@/lib/trivialMath";
+import { renderStudentHtml } from "@/lib/studentHtml";
 import Modal from "@/components/Modal";
 
 const REFERENCE_ICONS = { book: "📖", paper: "📄", video: "🎥", link: "🔗" };
 
-/** The docx/rich-text import pipeline splits a LaTeX command across separate
- * bold/italic runs when only part of it was styled in the source document —
- * e.g. "\vec{A}" with just "vec" bolded comes back as "\<strong>vec</strong>{A}",
- * which breaks the command and makes KaTeX render its own garbled error output
- * instead of throwing (throwOnError is off). LaTeX never legitimately contains
- * a literal "<letter" tag-shaped run, so stripping any embedded tags from
- * inside a captured math expression before handing it to KaTeX recovers the
- * original command cleanly. */
-function stripEmbeddedTags(expr) {
-  return expr.replace(/<\/?[a-zA-Z][^>]*>/g, "").replace(/&lt;\/?[a-zA-Z][^&]*?&gt;/g, "");
-}
-
-/** Bulk-imported questions sometimes carry raw LaTeX source typed straight into
- * a Word/Excel cell (e.g. "$\vec{a}+\vec{b}$") instead of using the equation-
- * editor button, so it lands in `text` as literal characters. Render it here
- * too, so this preview stays true to its "exactly what students will see"
- * claim — mirrors the same fix in Frontend's RichContent.js. */
-function renderInlineLatex(html) {
-  if (!html) return html;
-  let out = html.replace(/\$\$([\s\S]+?)\$\$/g, (match, expr) => {
-    const cleaned = stripEmbeddedTags(expr).trim();
-    if (!cleaned) return match;
-    try {
-      return katex.renderToString(cleaned, { throwOnError: false, displayMode: true });
-    } catch {
-      return match;
-    }
-  });
-  out = out.replace(/\$([^$\n]+?)\$/g, (match, expr) => {
-    const cleaned = stripEmbeddedTags(expr).trim();
-    if (!cleaned) return match;
-    // Plain numbers/quantities in math delimiters stay ordinary text, same as
-    // the student view (Frontend src/lib/mathDelimiters.js).
-    const plain = trivialMathToText(cleaned);
-    if (plain !== null) return plain;
-    try {
-      return katex.renderToString(cleaned, { throwOnError: false, displayMode: false });
-    } catch {
-      return match;
-    }
-  });
-  return out;
-}
-
+/** The preview uses the SAME renderer as the student page (renderStudentHtml =
+ * richHtml -> mathDelimiters -> trivialMath -> KaTeX -> DOMPurify), so every
+ * delimiter style students see rendered — $…$, $$…$$, \(…\), \[…\] and the
+ * malformed nested forms — renders identically here. */
 export default function PreviewModal({ question, onClose }) {
   return (
     <Modal title="Preview — exactly what students will see" onClose={onClose} wide>
@@ -57,7 +16,7 @@ export default function PreviewModal({ question, onClose }) {
         {question.marks} mark{Number(question.marks) === 1 ? "" : "s"} · −{question.negative_marks} for wrong answer
       </p>
 
-      <div className="hm-richtext-content text-[15px] font-medium leading-relaxed text-[var(--color-text)]" dangerouslySetInnerHTML={{ __html: renderInlineLatex(question.text) || "<p><em>Empty question</em></p>" }} />
+      <div className="hm-richtext-content text-[15px] font-medium leading-relaxed text-[var(--color-text)]" dangerouslySetInnerHTML={{ __html: renderStudentHtml(question.text) || "<p><em>Empty question</em></p>" }} />
 
       <div className="mt-4 flex flex-col gap-2.5">
         {question.options.map((opt, i) => (
@@ -68,7 +27,7 @@ export default function PreviewModal({ question, onClose }) {
             }`}
           >
             <span className="flex-none font-semibold text-[var(--color-text)]">{String.fromCharCode(65 + i)})</span>
-            <div className="hm-richtext-content min-w-0 flex-1 text-[var(--color-text)]" dangerouslySetInnerHTML={{ __html: renderInlineLatex(opt.text) || "" }} />
+            <div className="hm-richtext-content min-w-0 flex-1 text-[var(--color-text)]" dangerouslySetInnerHTML={{ __html: renderStudentHtml(opt.text) }} />
             {opt.is_correct && <span className="flex-none text-xs font-bold text-brand-green">✓ Correct</span>}
           </div>
         ))}
@@ -79,7 +38,7 @@ export default function PreviewModal({ question, onClose }) {
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">Explanation</p>
           <div
             className="hm-richtext-content text-sm leading-relaxed text-[var(--color-text-muted)]"
-            dangerouslySetInnerHTML={{ __html: renderInlineLatex(question.explanation) }}
+            dangerouslySetInnerHTML={{ __html: renderStudentHtml(question.explanation) }}
           />
           {question.references?.length > 0 && (
             <div className="mt-3">

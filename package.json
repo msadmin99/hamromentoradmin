@@ -28,6 +28,7 @@
     "@tiptap/pm": "^3.29.2",
     "@tiptap/react": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
+    "dompurify": "^3.4.16",
     "fabric": "^7.4.0",
     "katex": "^0.18.1",
     "mathlive": "^0.110.0",
@@ -38,8 +39,11 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tiptap/core": "^3.29.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
-    "tailwindcss": "^4"
+    "jsdom": "^26.1.0",
+    "tailwindcss": "^4",
+    "typescript": "^6.0.3"
   }
 }
