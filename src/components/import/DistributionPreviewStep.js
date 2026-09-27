@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { summarizeBatch } from "./importRowState";
 
 export default function DistributionPreviewStep({ batch, config, creating, onCreate, onBack }) {
   const [taxonomy, setTaxonomy] = useState(null);
@@ -23,8 +24,12 @@ export default function DistributionPreviewStep({ batch, config, creating, onCre
   }, [batch.id, batch.subject_id, batch.chapter_id, batch.topic_id, config.courses]);
 
   const counts = batch.row_counts || {};
-  const eligible = (counts.valid || 0) + (counts.warning || 0) + (counts.duplicate || 0);
-  const skipped = counts.error || 0;
+  // Includes errors the admin chose to Skip (import anyway) — Create Test imports them too.
+  const summary = summarizeBatch(batch);
+  const eligible = summary.importable;
+  // Only UNRESOLVED errors are left out; a skipped error is imported, so it is
+  // part of "Questions to import" above.
+  const skipped = summary.unresolvedErrors;
 
   const shuffleLabel = [config.shuffle_questions && "Questions", config.shuffle_options && "Options"].filter(Boolean).join(" + ") || "Off";
 
@@ -42,7 +47,7 @@ export default function DistributionPreviewStep({ batch, config, creating, onCre
             <p className="text-lg font-extrabold text-brand-green">{eligible}</p>
           </div>
           <div>
-            <p className="text-xs text-[var(--color-text-muted)]">Skipped (errors)</p>
+            <p className="text-xs text-[var(--color-text-muted)]">Errors left out</p>
             <p className="text-lg font-extrabold text-[var(--color-text-muted)]">{skipped}</p>
           </div>
           <div>

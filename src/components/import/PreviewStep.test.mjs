@@ -97,15 +97,23 @@ test("Feature 1: the bulk dedup endpoint is a single request per action, not one
 
 test("Feature 2: error rows can be skipped individually and in bulk without deleting or altering their errors", async (t) => {
   await t.test("individual Skip/Undo Skip buttons call onSave with error_skipped, not a delete", () => {
-    assert.match(src, /onClick=\{\(\) => onSave\(row\.id, \{ error_skipped: false \}\)\}/);
-    assert.match(src, /onClick=\{\(\) => onSave\(row\.id, \{ error_skipped: true \}\)\}/);
+    // RowDetail's buttons go through setSkip(), which is the only caller of onSave for this flag.
+    assert.match(src, /onClick=\{\(\) => setSkip\(false\)\}/);
+    assert.match(src, /onClick=\{\(\) => setSkip\(true\)\}/);
+    assert.match(src, /await onSave\(row\.id, \{ error_skipped: skipped \}\)/);
+    assert.doesNotMatch(src.slice(src.indexOf("async function setSkip"), src.indexOf("function update(patch)")), /onDelete|api\.del/);
   });
 
   await t.test("Select All Errors / Skip All Errors / Skip Selected Errors / Undo Skip Selected are all present", () => {
     assert.match(src, />\s*Select All Errors\s*</);
-    assert.match(src, />\s*Skip All Errors\s*</);
-    assert.match(src, />\s*Skip Selected Errors\s*</);
-    assert.match(src, />\s*Undo Skip Selected\s*</);
+    // Labels now come from one constant so the "(import anyway)" meaning is identical everywhere.
+    assert.match(src, /\{SKIP_TEXT\.bulkSkipAll\}/);
+    assert.match(src, /\{SKIP_TEXT\.bulkSkipSelected\}/);
+    assert.match(src, /\{SKIP_TEXT\.bulkUndoSelected\}/);
+    const state = readFileSync(join(here, "importRowState.js"), "utf8");
+    assert.match(state, /bulkSkipAll: "Skip All Errors \(import anyway\)"/);
+    assert.match(state, /bulkSkipSelected: "Skip Selected Errors \(import anyway\)"/);
+    assert.match(state, /bulkUndoSelected: "Undo Skip Selected"/);
   });
 
   await t.test("bulk skip-error goes through the dedicated endpoint, one request for the whole selection", () => {
@@ -114,30 +122,38 @@ test("Feature 2: error rows can be skipped individually and in bulk without dele
     assert.match(fn, /row_ids: Array\.from\(selectedErrorIds\)/);
   });
 
-  await t.test("a skipped error row shows a distinct 'Skipped' status label without changing row.status semantics", () => {
-    assert.match(src, /function displayStatus\(row\) \{/);
-    assert.match(src, /if \(row\.status === "error" && row\.error_skipped\) return "skipped";/);
+  await t.test("a skipped error row shows a distinct status label without changing row.status semantics", () => {
+    // The label is derived (never written back to row.status) by the shared state model.
+    const state = readFileSync(join(here, "importRowState.js"), "utf8");
+    assert.match(state, /case "error":\s*return row\.error_skipped \? ROW_STATE\.ERROR_IMPORT_ANYWAY : ROW_STATE\.ERROR;/);
+    assert.match(src, /const badge = rowBadge\(row\);/);
+    assert.doesNotMatch(src, /row\.status = /);
   });
 
   await t.test("a Skip/Undo Skip control is visible on the COLLAPSED row, not only inside the expanded detail (Part B root-cause fix: discoverability)", () => {
     const collapsedRowBlock = src.slice(src.indexOf("rows.map((row) => {"), src.indexOf("{expandedId === row.id && <RowDetail"));
-    assert.match(collapsedRowBlock, /row\.status === "error" && \(/);
-    assert.match(collapsedRowBlock, /onClick=\{\(\) => saveRow\(row\.id, \{ error_skipped: !row\.error_skipped \}\)\}/);
-    assert.match(collapsedRowBlock, /\{row\.error_skipped \? "Undo Skip" : "Skip"\}/);
+    assert.match(collapsedRowBlock, /row\.status === "error" && \(row\.error_skipped \|\| canSkipError\(row\)\) && \(/);
+    assert.match(collapsedRowBlock, /onClick=\{\(\) => toggleRowSkip\(row\)\}/);
+    assert.match(collapsedRowBlock, /\{row\.error_skipped \? SKIP_TEXT\.undo : SKIP_TEXT\.actionShort\}/);
+    // and it saves through the same error_skipped flag, surfacing (not swallowing) a server refusal
+    assert.match(src, /await saveRow\(row\.id, \{ error_skipped: !row\.error_skipped \}\)/);
   });
 
   await t.test("the collapsed-row Skip button is a sibling of the expand-toggle, not nested inside it (clicking Skip must not also toggle expand)", () => {
     const collapsedRowBlock = src.slice(src.indexOf("rows.map((row) => {"), src.indexOf("{expandedId === row.id && <RowDetail"));
     const toggleButtonEnd = collapsedRowBlock.indexOf("</button>");
-    const skipButtonIndex = collapsedRowBlock.indexOf('onClick={() => saveRow(row.id, { error_skipped:');
+    const skipButtonIndex = collapsedRowBlock.indexOf("onClick={() => toggleRowSkip(row)}");
     assert.ok(skipButtonIndex > toggleButtonEnd, "collapsed-row Skip button must render after the expand-toggle button closes");
   });
 });
 
 test("Feature 2, item 6: the Import button unblocks once all errors are skipped", async (t) => {
-  await t.test("eligibility uses unskipped_error_count, not the raw (unaffected) error count", () => {
-    assert.match(src, /\(batch\.unskipped_error_count \?\? counts\.error \?\? 0\) === batch\.total_rows/);
+  await t.test("eligibility uses the server's importable count (skipped errors count as importable), not the raw error count", () => {
+    assert.match(src, /summary\.importable === 0/);
     assert.doesNotMatch(src, /\(counts\.error \|\| 0\) === batch\.total_rows/);
+    assert.doesNotMatch(src, /unskipped_error_count \?\? counts\.error \?\? 0\) === batch\.total_rows/);
+    const state = readFileSync(join(here, "importRowState.js"), "utf8");
+    assert.match(state, /batch\?\.importable_count \?\?/);
   });
 });
 
@@ -155,13 +171,15 @@ test("Feature 5: bulk-selection UX uses the existing design system, no new visua
 });
 
 test("Feature 6: the import summary adds a Skipped tile without altering existing counts", async (t) => {
-  await t.test("a 6th 'Skipped' tile is added to the existing summary grid", () => {
-    assert.match(src, /<p className="text-xs text-\[var\(--color-text-muted\)\]">Skipped<\/p>/);
-    assert.match(src, /\{batch\.skipped_projected_count \|\| 0\}/);
+  await t.test("the 6th tile counts skipped errors as WILL-IMPORT (not omitted)", () => {
+    assert.match(src, /<p className="text-xs text-\[var\(--color-text-muted\)\]">Skipped errors \(will import\)<\/p>/);
+    assert.match(src, /\{summary\.skippedErrors\}/);
+    assert.doesNotMatch(src, /batch\.skipped_projected_count/);
   });
 
   await t.test("the existing Total/Valid/Warnings/Errors/Duplicates tiles are all still present, unchanged", () => {
-    for (const label of ["Total Questions", "Valid", "Warnings", "Errors", "Duplicates"]) {
+    // "Errors" is now "Errors (unresolved)": a skipped error is no longer an unresolved error.
+    for (const label of ["Total Questions", "Valid", "Warnings", "Errors (unresolved)", "Duplicates"]) {
       assert.ok(src.includes(`>${label}<`), `missing existing summary tile: ${label}`);
     }
   });
@@ -184,5 +202,23 @@ test("Regression safety: unrelated behaviors are untouched", async (t) => {
 
   await t.test("the individual row delete confirmation dialog is untouched", () => {
     assert.match(src, /Remove this question from the import\? This can't be undone/);
+  });
+});
+
+test("Skip -> duplicate check: the screen follows a background run to completion (no manual refresh)", async (t) => {
+  await t.test("skip flows watch a pending/processing dedup status", () => {
+    assert.match(src, /function watchDedup\(updatedBatch\) \{/);
+    assert.match(src, /updatedBatch\?\.dedup_status === "pending" \|\| updatedBatch\?\.dedup_status === "processing"/);
+    // single-row skip (saveRow) and both bulk paths (selected + all) all call it
+    assert.equal((src.match(/watchDedup\(updatedBatch\);/g) || []).length, 3);
+  });
+
+  await t.test("polling is generation-scoped, stops when completed, and reloads the rows", () => {
+    const effect = src.slice(src.indexOf("if (skipDedupGeneration == null) return undefined;"), src.indexOf("async function saveRow"));
+    assert.match(effect, /data\.dedup_generation !== skipDedupGeneration/);
+    assert.match(effect, /data\.dedup_status === "completed"/);
+    assert.match(effect, /setSkipDedupGeneration\(null\)/);
+    assert.match(effect, /load\(\)/);
+    assert.match(effect, /setTimeout\(/);
   });
 });

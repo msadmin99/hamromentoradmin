@@ -4,6 +4,7 @@ import { useState } from "react";
 import PreviewStep from "@/components/import/PreviewStep";
 import UploadStep from "@/components/import/UploadStep";
 import { api } from "@/lib/api";
+import { summarizeBatch } from "@/components/import/importRowState";
 
 // Phase C — Bulk Import Questions into an existing exam. Reuses the
 // existing import pipeline's UploadStep/PreviewStep completely unmodified
@@ -23,21 +24,25 @@ import { api } from "@/lib/api";
 // instead of calling the Question-Bank-only /confirm/ endpoint itself, and
 // it already includes the exact unresolved-duplicate-decision gate this
 // workflow needs, unmodified.
-const SUMMARY_LABELS = {
-  valid: { label: "Valid", className: "text-brand-green" },
-  warning: { label: "Warnings", className: "text-yellow-700" },
-  duplicate: { label: "Duplicates resolved", className: "text-purple-700" },
-  error: { label: "Skipped (errors)", className: "text-[var(--color-text-muted)]" },
-};
+// Tiles other than "Questions to add". "Skipped errors" are validation errors the
+// admin chose to ignore — those questions ARE added. "Errors left out" are
+// unresolved errors, which are NOT added (Skip them to add them, or Delete them).
+const SUMMARY_TILES = [
+  { key: "valid", label: "Valid", className: "text-brand-green" },
+  { key: "warning", label: "Warnings", className: "text-yellow-700" },
+  { key: "duplicate", label: "Duplicates resolved", className: "text-purple-700" },
+  { key: "skippedErrors", label: "Skipped errors (added anyway)", className: "text-[var(--color-text)]" },
+  { key: "unresolvedErrors", label: "Errors left out", className: "text-brand-red" },
+];
 
-function ImportSummaryStep({ batch, onBack, onImported, onCancel }) {
+export function ImportSummaryStep({ batch, onBack, onImported, onCancel }) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const [failedRowNumber, setFailedRowNumber] = useState(null);
   const [result, setResult] = useState(null); // { question_ids } once the backend call succeeds
 
-  const counts = batch.row_counts || {};
-  const eligible = (counts.valid || 0) + (counts.warning || 0) + (counts.duplicate || 0);
+  const summary = summarizeBatch(batch);
+  const eligible = summary.importable;
 
   async function handleImport() {
     setImporting(true);
@@ -102,15 +107,15 @@ function ImportSummaryStep({ batch, onBack, onImported, onCancel }) {
           Nothing is added to the exam until you click the button below — and the exam itself isn&apos;t saved until
           you click Save afterward.
         </p>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div>
             <p className="text-xs text-[var(--color-text-muted)]">Questions to add</p>
             <p className="text-lg font-extrabold text-brand-green">{eligible}</p>
           </div>
-          {Object.entries(SUMMARY_LABELS).map(([key, meta]) => (
-            <div key={key}>
-              <p className="text-xs text-[var(--color-text-muted)]">{meta.label}</p>
-              <p className={`text-lg font-extrabold ${meta.className}`}>{counts[key] || 0}</p>
+          {SUMMARY_TILES.map((tile) => (
+            <div key={tile.key}>
+              <p className="text-xs text-[var(--color-text-muted)]">{tile.label}</p>
+              <p className={`text-lg font-extrabold ${tile.className}`}>{summary[tile.key]}</p>
             </div>
           ))}
         </div>

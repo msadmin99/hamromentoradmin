@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import RichEditor from "@/components/richeditor/RichEditor";
+import RenderedContent from "@/components/richeditor/RenderedContent";
 import { api } from "@/lib/api";
+import { canSkipError, rowBadge, skipAllConfirmMessage, SKIP_TEXT, summarizeBatch } from "./importRowState";
 
 const STATUS_STYLES = {
   valid: "bg-brand-green-light text-brand-green",
@@ -17,18 +19,6 @@ const DEDUP_OPTIONS = [
   { key: "replace", label: "Replace" },
   { key: "keep_both", label: "Keep Both" },
 ];
-
-// A row's underlying `status` never changes just because the admin chose
-// to bypass it (Feature 1/2's whole point — see ImportRow.error_skipped's
-// backend docstring) — this is purely a display label so "Skipped" shows
-// wherever it's actually true, without inventing a new row.status value
-// the rest of the app (filters, counts, confirm-eligibility) would also
-// have to learn about.
-function displayStatus(row) {
-  if (row.status === "error" && row.error_skipped) return "skipped";
-  if (row.status === "duplicate" && row.dedup_action === "skip") return "skipped";
-  return row.status;
-}
 
 function stripTags(html) {
   return (html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -252,12 +242,37 @@ function ImagePreview({ src, label }) {
   );
 }
 
-function RowDetail({ row, onSave, onDelete }) {
+// READ-ONLY "what students will see" panel shown next to an editor. It renders
+// the editor's current source through the same pipeline as the student page;
+// it never edits, converts or stores anything, so the source in the editor
+// (including raw $…$ / \(…\) delimiters) is exactly what gets saved.
+function RenderedPreviewBox({ label, html }) {
+  return (
+    <div className="mt-1.5 rounded-md border border-dashed border-[var(--color-border)] bg-white/70 px-2.5 py-1.5" data-rendered-preview-box>
+      <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-muted)]">{label}</p>
+      <RenderedContent html={html} className="text-sm text-[var(--color-text)]" emptyLabel="Nothing to preview yet." />
+    </div>
+  );
+}
+
+export function RowDetail({ row, onSave, onDelete }) {
   const [data, setData] = useState(row.data);
   const imageUrls = row.image_urls || {};
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [skipError, setSkipError] = useState("");
+
+  // "Skip" = ignore this validation error and import the question anyway (the
+  // server refuses, with a reason, for errors that can't be safely imported).
+  async function setSkip(skipped) {
+    setSkipError("");
+    try {
+      await onSave(row.id, { error_skipped: skipped });
+    } catch (err) {
+      setSkipError(err.message || "Could not change this row's Skip setting.");
+    }
+  }
 
   function update(patch) {
     setData((d) => ({ ...d, ...patch }));
@@ -314,35 +329,39 @@ function RowDetail({ row, onSave, onDelete }) {
       )}
 
       {row.status === "error" && (
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-2 flex flex-col gap-1.5" data-skip-panel>
           {row.error_skipped ? (
-            <>
-              <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                Status: Skipped — excluded from this import, not deleted. The error above still shows why.
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-[var(--color-text)]">
+                {SKIP_TEXT.status} <span className="font-normal text-[var(--color-text-muted)]">{SKIP_TEXT.statusDetail}</span>
               </span>
+              <button type="button" onClick={() => setSkip(false)} className="hm-btn-outline flex-none px-2 py-1 text-[11px]">
+                {SKIP_TEXT.undo}
+              </button>
+            </div>
+          ) : row.bypass_eligible === false ? (
+            <p className="text-[11px] font-semibold text-brand-red" data-cannot-skip>
+              {SKIP_TEXT.cannotSkip} <span className="font-normal">{row.bypass_block_reason || SKIP_TEXT.cannotSkipHelp}</span>
+            </p>
+          ) : (
+            <div>
               <button
                 type="button"
-                onClick={() => onSave(row.id, { error_skipped: false })}
-                className="hm-btn-outline flex-none px-2 py-1 text-[11px]"
+                onClick={() => setSkip(true)}
+                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text)]"
               >
-                Undo Skip
+                {SKIP_TEXT.action}
               </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onSave(row.id, { error_skipped: true })}
-              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text)]"
-            >
-              Skip this error — keep it in the file, just don&apos;t import it
-            </button>
+            </div>
           )}
+          {skipError && <p className="text-[11px] font-medium text-brand-red">{skipError}</p>}
         </div>
       )}
 
       <label className="mb-1 block text-[11px] font-semibold text-[var(--color-text-muted)]">Question</label>
       <RichEditor value={data.text_html} onChange={(html) => update({ text_html: html })} placeholder="Question text" minHeight={70} />
       <ImagePreview src={imageUrls.question_image_url} label="Question diagram" />
+      <RenderedPreviewBox label="Rendered preview" html={data.text_html} />
 
       <p className="mb-1.5 mt-3 text-[11px] font-semibold text-[var(--color-text-muted)]">
         Options — click the letter to mark correct (multiple allowed)
@@ -371,6 +390,7 @@ function RowDetail({ row, onSave, onDelete }) {
                   minHeight={44}
                 />
                 <ImagePreview src={(imageUrls.option_image_urls || [])[i]} label={`Option ${String.fromCharCode(65 + i)} diagram`} />
+                <RenderedPreviewBox label="Rendered preview" html={o.text_html} />
               </div>
               <button
                 type="button"
@@ -397,8 +417,14 @@ function RowDetail({ row, onSave, onDelete }) {
           minHeight={70}
         />
         <ImagePreview src={imageUrls.explanation_image_url} label="Explanation diagram" />
+        <RenderedPreviewBox label="Rendered preview" html={data.explanation_html} />
       </div>
 
+      {row.status === "duplicate" && row.error_skipped && (
+        <p className="mt-3 text-[11px] font-semibold text-[var(--color-text)]" data-skipped-duplicate-note>
+          {SKIP_TEXT.skippedDuplicateNote}
+        </p>
+      )}
       {row.status === "duplicate" && (
         <div className="mt-3 flex items-center gap-2">
           <span className="text-[11px] font-semibold text-purple-800">Duplicate — choose an action:</span>
@@ -420,7 +446,7 @@ function RowDetail({ row, onSave, onDelete }) {
 
       <div className="mt-3 flex items-center justify-between">
         <button type="button" onClick={handleDelete} disabled={deleting} className="text-xs font-semibold text-brand-red disabled:opacity-50">
-          {deleting ? "Removing…" : "🗑 Remove this question"}
+          {deleting ? "Removing…" : `🗑 ${SKIP_TEXT.deleteLabel}`}
         </button>
         <button onClick={save} disabled={saving} className="hm-btn-outline px-3 py-1 text-[11px]">
           {saving ? "Saving…" : "Save edit"}
@@ -449,7 +475,16 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
   const [selectedErrorIds, setSelectedErrorIds] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState("");
+  // A bulk Skip can hand its duplicate check to a background run, leaving the batch
+  // "pending"; poll until it completes so Import re-enables without a manual refresh.
+  const [skipDedupGeneration, setSkipDedupGeneration] = useState(null);
   const pageSize = 25;
+
+  function watchDedup(updatedBatch) {
+    if (updatedBatch?.dedup_status === "pending" || updatedBatch?.dedup_status === "processing") {
+      setSkipDedupGeneration(updatedBatch.dedup_generation);
+    }
+  }
 
   function load() {
     setLoading(true);
@@ -470,6 +505,30 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
 
   useEffect(load, [batch.id, page, statusFilter, highlightRowNumber]);
 
+  useEffect(() => {
+    if (skipDedupGeneration == null) return undefined;
+    let cancelled = false;
+    function poll() {
+      api.get(`/import-batches/${batch.id}/status/`).then((data) => {
+        if (cancelled || data.dedup_generation !== skipDedupGeneration) return; // superseded
+        setBatch(data);
+        if (data.dedup_status === "completed") {
+          setSkipDedupGeneration(null);
+          load(); // rows the check flagged as duplicates now show as such
+          return;
+        }
+        setTimeout(() => {
+          if (!cancelled) poll();
+        }, 1200);
+      });
+    }
+    poll();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skipDedupGeneration, batch.id]);
+
   async function saveRow(rowId, payload) {
     const updated = await api.patch(`/import-batches/${batch.id}/rows/${rowId}/`, payload);
     setRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, ...updated } : r)));
@@ -478,6 +537,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
     // and the Import button's enabled state above depend on — refresh them.
     const updatedBatch = await api.get(`/import-batches/${batch.id}/status/`);
     setBatch(updatedBatch);
+    watchDedup(updatedBatch);
   }
 
   async function deleteRow(rowId) {
@@ -486,6 +546,17 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
     setRows((prev) => prev.filter((r) => r.id !== rowId));
     setTotal((prev) => Math.max(0, prev - 1));
     setExpandedId((prev) => (prev === rowId ? null : prev));
+  }
+
+  // The one-click Skip / Undo Skip on a row in the list. Errors (e.g. the server
+  // refusing to skip an unimportable row) are shown, never swallowed.
+  async function toggleRowSkip(row) {
+    setBulkError("");
+    try {
+      await saveRow(row.id, { error_skipped: !row.error_skipped });
+    } catch (err) {
+      setBulkError(err.message || "Could not change this row's Skip setting.");
+    }
   }
 
   function toggleDuplicateSelected(id) {
@@ -556,8 +627,21 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
     }
   }
 
+  // The server decides which errors may be ignored; rows it refuses come back in
+  // `rejected` with a reason, and stay unresolved errors.
+  function reportRejected(response) {
+    const rejected = response?.rejected || [];
+    if (rejected.length === 0) return;
+    setBulkError(
+      `${rejected.length} question(s) could not be skipped because their error can't be safely imported ` +
+        `(row${rejected.length === 1 ? "" : "s"} ${rejected.slice(0, 8).map((r) => `#${r.row_number}`).join(", ")}` +
+        `${rejected.length > 8 ? ", …" : ""}). Fix them or Delete them.`,
+    );
+  }
+
   async function applyBulkSkipError(skipped) {
     if (selectedErrorIds.size === 0) return;
+    if (skipped && !confirm(skipAllConfirmMessage(selectedErrorIds.size))) return;
     setBulkBusy(true);
     setBulkError("");
     try {
@@ -568,6 +652,8 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
       setBatch(updatedBatch);
       setSelectedErrorIds(new Set());
       load();
+      reportRejected(updatedBatch);
+      watchDedup(updatedBatch);
     } catch (err) {
       setBulkError(err.message || "Could not update the selected error rows.");
     } finally {
@@ -585,6 +671,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
     try {
       const idsData = await api.get(`/import-batches/${batch.id}/rows/?status=error&ids_only=1`);
       if (idsData.ids.length === 0) return;
+      if (!confirm(skipAllConfirmMessage(idsData.ids.length))) return;
       const updatedBatch = await api.post(`/import-batches/${batch.id}/rows/bulk-skip-error/`, {
         row_ids: idsData.ids,
         skipped: true,
@@ -592,6 +679,8 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
       setBatch(updatedBatch);
       setSelectedErrorIds(new Set());
       load();
+      reportRejected(updatedBatch);
+      watchDedup(updatedBatch);
     } catch (err) {
       setBulkError(err.message || "Could not skip all error rows.");
     } finally {
@@ -647,6 +736,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
   }
 
   const counts = batch.row_counts || {};
+  const summary = summarizeBatch(batch);
   const unresolvedDuplicates = (counts.duplicate || 0) > 0 && rows.some((r) => r.status === "duplicate" && !r.dedup_action);
 
   return (
@@ -667,18 +757,23 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
           <p className="text-lg font-extrabold text-yellow-700">{counts.warning || 0}</p>
         </div>
         <div>
-          <p className="text-xs text-[var(--color-text-muted)]">Errors</p>
-          <p className="text-lg font-extrabold text-brand-red">{counts.error || 0}</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Errors (unresolved)</p>
+          <p className="text-lg font-extrabold text-brand-red">{summary.unresolvedErrors}</p>
         </div>
         <div>
           <p className="text-xs text-[var(--color-text-muted)]">Duplicates</p>
           <p className="text-lg font-extrabold text-purple-700">{counts.duplicate || 0}</p>
         </div>
         <div>
-          <p className="text-xs text-[var(--color-text-muted)]">Skipped</p>
-          <p className="text-lg font-extrabold text-[var(--color-text-muted)]">{batch.skipped_projected_count || 0}</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Skipped errors (will import)</p>
+          <p className="text-lg font-extrabold text-[var(--color-text-muted)]">{summary.skippedErrors}</p>
         </div>
       </div>
+      <p className="text-xs text-[var(--color-text-muted)]" data-import-summary-line>
+        {summary.importable} question(s) will be imported.
+        {summary.unresolvedErrors > 0 &&
+          ` ${summary.unresolvedErrors} unresolved error(s) will be left out — Skip one to import it anyway, or Delete it.`}
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         {["", "valid", "warning", "error", "duplicate"].map((s) => (
@@ -748,7 +843,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
             Select All Errors
           </button>
           <button type="button" onClick={skipAllErrorsNow} disabled={bulkBusy} className="hm-btn-outline px-3 py-1 text-xs disabled:opacity-50">
-            Skip All Errors
+            {SKIP_TEXT.bulkSkipAll}
           </button>
           {selectedErrorIds.size > 0 && (
             <>
@@ -769,7 +864,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
                 disabled={bulkBusy}
                 className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text)] disabled:opacity-50"
               >
-                Skip Selected Errors
+                {SKIP_TEXT.bulkSkipSelected}
               </button>
               <button
                 type="button"
@@ -777,7 +872,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
                 disabled={bulkBusy}
                 className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text)] disabled:opacity-50"
               >
-                Undo Skip Selected
+                {SKIP_TEXT.bulkUndoSelected}
               </button>
             </>
           )}
@@ -790,7 +885,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
         {loading && <p className="p-4 text-sm text-[var(--color-text-muted)]">Loading…</p>}
         {!loading &&
           rows.map((row) => {
-            const status = displayStatus(row);
+            const badge = rowBadge(row);
             const selectable = row.status === "duplicate" ? "duplicate" : row.status === "error" ? "error" : null;
             const checked = selectable === "duplicate" ? selectedDuplicateIds.has(row.id) : selectable === "error" ? selectedErrorIds.has(row.id) : false;
             return (
@@ -810,27 +905,28 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
                     className="flex flex-1 items-center gap-3 text-left"
                   >
                     <span className="w-8 flex-none text-xs text-[var(--color-text-muted)]">#{row.row_number}</span>
-                    <span className={`flex-none rounded-md px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[status] || ""}`}>
-                      {status.toUpperCase()}
+                    <span className={`flex-none rounded-md px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[badge.style] || ""}`}>
+                      {badge.label}
                     </span>
                     <span className="flex-1 truncate text-sm text-[var(--color-text)]">
                       {stripTags(row.data.text_html) || "(blank question)"}
                     </span>
                     <span className="flex-none text-[var(--color-text-muted)]">{expandedId === row.id ? "▲" : "▼"}</span>
                   </button>
-                  {row.status === "error" && (
+                  {row.status === "error" && (row.error_skipped || canSkipError(row)) && (
                     // Visible without expanding the row — the same Skip
                     // control also lives in RowDetail (with the fuller
-                    // "excluded, not deleted" explanation) for anyone who
-                    // does expand, but a Skip action needs to be
-                    // discoverable at a glance across a whole Error list,
-                    // the same way the STATUS badge already is.
+                    // explanation) for anyone who does expand. Skip means
+                    // "ignore this error and import the question anyway".
+                    // Not offered for an error the server says can't be
+                    // safely imported (RowDetail explains why instead).
                     <button
                       type="button"
-                      onClick={() => saveRow(row.id, { error_skipped: !row.error_skipped })}
+                      onClick={() => toggleRowSkip(row)}
+                      title="Skip: ignore this validation error and import this question anyway"
                       className="flex-none rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text)]"
                     >
-                      {row.error_skipped ? "Undo Skip" : "Skip"}
+                      {row.error_skipped ? SKIP_TEXT.undo : SKIP_TEXT.actionShort}
                     </button>
                   )}
                 </div>
@@ -884,12 +980,9 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
             confirming ||
             !taxonomyComplete ||
             !dedupComplete ||
-            // Feature 2, item 6: once every Error row has been explicitly
-            // skipped, this must no longer block Import — unskipped_error_count
-            // (not the raw error count, which never changes just from
-            // skipping — see ImportRow.error_skipped's docstring) is what
-            // actually reflects that.
-            (batch.unskipped_error_count ?? counts.error ?? 0) === batch.total_rows
+            // Nothing importable = nothing to do. A Skipped error counts as
+            // importable (it is imported anyway); an unresolved Error does not.
+            summary.importable === 0
           }
           className="hm-btn-primary"
         >
@@ -897,7 +990,7 @@ export default function PreviewStep({ batch: initialBatch, mode = "question_bank
             ? "Continue to Test Configuration →"
             : confirming
               ? "Starting…"
-              : `Import ${(counts.valid || 0) + (counts.warning || 0) + (counts.duplicate || 0)} question(s)`}
+              : `Import ${summary.importable} question(s)`}
         </button>
       </div>
     </div>
