@@ -55,6 +55,21 @@ function VerificationBadge({ status }) {
   return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${meta.className}`}>{meta.label}</span>;
 }
 
+// Email verification status — a separate, unrelated concept from
+// VerificationBadge above (identity/KYC documents). Purely informational:
+// never implies exam access/entitlement, matching accounts.User.email_verified's
+// own docstring ("gates ONLY the notification EMAIL channel"). Shown for
+// both states (unlike VerificationBadge, which hides its common default) —
+// staff specifically need to notice an unconfirmed address, since that's
+// exactly when a mistyped email is silently failing to receive reminders.
+function EmailVerifiedBadge({ verified }) {
+  return verified ? (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-green">✓ Verified</span>
+  ) : (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-yellow-700">⚠ Not verified</span>
+  );
+}
+
 function StatusBadge({ isActive }) {
   return isActive ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-light px-2.5 py-1 text-[11px] font-bold text-brand-green">
@@ -207,6 +222,7 @@ export default function StudentsTable({ students, loading, error, onRetry, onTog
                     </td>
                     <td className="max-w-[220px] px-4 py-3.5">
                       <p className="truncate text-[var(--color-text)]" title={s.email}>{s.email}</p>
+                      <EmailVerifiedBadge verified={s.email_verified} />
                       {s.phone && <p className="text-[11px] text-[var(--color-text-muted)]">{s.phone}</p>}
                     </td>
                     <td className="px-4 py-3.5">
@@ -271,6 +287,7 @@ export default function StudentsTable({ students, loading, error, onRetry, onTog
                       <VerificationBadge status={s.profile?.verification_status} />
                     </div>
                     <p className="truncate text-[11px] text-[var(--color-text-muted)]">{s.email}</p>
+                    <EmailVerifiedBadge verified={s.email_verified} />
                   </div>
                 </div>
                 <ActionButtons student={s} onToggleActive={onToggleActive} toggling={togglingId === s.id} canDelete={canDelete} onDelete={onDelete} />

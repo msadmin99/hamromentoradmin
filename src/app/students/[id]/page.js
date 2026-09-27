@@ -209,6 +209,16 @@ function OverviewTab({ student }) {
 
       <SectionCard title="Contact Information">
         <InfoRow label="Email" value={student.email} />
+        <InfoRow
+          label="Email Status"
+          value={
+            student.email_verified ? (
+              <span className="text-brand-green">✓ Verified</span>
+            ) : (
+              <span className="text-yellow-700">⚠ Not verified</span>
+            )
+          }
+        />
         <InfoRow label="Phone" value={student.phone} />
       </SectionCard>
 
