@@ -13,6 +13,7 @@ import StudentPicker from "@/components/StudentPicker";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { countNetNew, mergeImportedQuestions } from "@/lib/examQuestionMerge";
+import { isValidScheduleWindow, isoToKathmanduLocal, kathmanduLocalToISOString } from "@/lib/kathmanduDatetime";
 import BulkImportWorkspace from "@/components/examManagement/BulkImportWorkspace";
 import CreateExamWizardShell from "@/components/examManagement/CreateExamWizardShell";
 import ExamTable from "@/components/examManagement/ExamTable";
@@ -45,6 +46,11 @@ function emptyForm(examType) {
     university: "",
     scheduled_start: "",
     scheduled_end: "",
+    // Grand Test schedule fix, round 2 — non-null means this Test's
+    // schedule is governed by a real ExamSession, so the two fields
+    // above are display-only here; always null for a brand-new exam
+    // (openCreate never sets it). See its own note at the input fields.
+    active_session_id: null,
     duration_minutes: 60,
     questions_per_page: 1,
     negative_marking: true,
@@ -310,6 +316,14 @@ function ExamManagementContent() {
   async function openEdit(t) {
     const full = await api.get(`/tests/${t.id}/`);
     setEditingId(t.id);
+    // Grand Test schedule fix, round 2 — `active_session_id` (from
+    // TestAdminSerializer, the same resolve_test_schedule_session() every
+    // other reader uses) tells us whether a real ExamSession, not these
+    // Test fields, is what students actually see. When one exists, show
+    // ITS schedule (the true, live value) in these now-disabled fields
+    // instead of Test.scheduled_start/end, which can be stale/unrelated
+    // once a session has taken over — see the input fields' own note.
+    const activeSession = full.active_session_id ? await api.get(`/exam-sessions/${full.active_session_id}/`) : null;
     setForm({
       title: full.title,
       description: full.description || "",
@@ -323,8 +337,15 @@ function ExamManagementContent() {
       is_draft: full.is_draft,
       academic_year: full.academic_year || "",
       university: full.university || "",
-      scheduled_start: full.scheduled_start ? full.scheduled_start.slice(0, 16) : "",
-      scheduled_end: full.scheduled_end ? full.scheduled_end.slice(0, 16) : "",
+      active_session_id: full.active_session_id || null,
+      // Grand Test schedule timezone fix: the backend's value is a UTC-
+      // offset ISO datetime; `.slice(0, 16)` used to show its raw UTC
+      // wall-clock digits in a field labeled (and intended to mean)
+      // Asia/Kathmandu time — isoToKathmanduLocal converts it correctly
+      // instead, so re-opening an exam for edit shows the admin the same
+      // Kathmandu time they originally entered.
+      scheduled_start: isoToKathmanduLocal(activeSession ? activeSession.start_datetime : full.scheduled_start),
+      scheduled_end: isoToKathmanduLocal(activeSession ? activeSession.end_datetime : full.scheduled_end),
       duration_minutes: full.duration_minutes,
       questions_per_page: full.questions_per_page || 1,
       negative_marking: full.negative_marking,
@@ -361,6 +382,16 @@ function ExamManagementContent() {
       setError('A published exam needs at least one course, batch, or individual student assigned — otherwise no student can see it. Assign it in the "Access & Assignment" step, or keep it as Draft.');
       return;
     }
+    // Grand Test schedule fix §12 — client-side echo of the same rule the
+    // backend's TestAdminSerializer.validate now enforces; this is UX
+    // only, the server is still the real gate. Skipped when
+    // active_session_id is set: those fields are disabled and excluded
+    // from the payload below (round 2's own fix — see that field's
+    // note), so there's nothing of this form's own to validate here.
+    if (!form.active_session_id && !isValidScheduleWindow(kathmanduLocalToISOString(form.scheduled_start), kathmanduLocalToISOString(form.scheduled_end))) {
+      setError("Scheduled end must be after the scheduled start.");
+      return;
+    }
     setError("");
     setSaving(true);
     const payload = {
@@ -375,8 +406,17 @@ function ExamManagementContent() {
       is_draft: form.is_draft,
       academic_year: form.academic_year,
       university: form.university,
-      scheduled_start: form.scheduled_start || null,
-      scheduled_end: form.scheduled_end || null,
+      // Grand Test schedule fix, round 2 — when active_session_id is
+      // set, a real ExamSession (not these fields) is what students
+      // actually see (resolve_test_schedule_session always prefers it),
+      // so these two keys are omitted entirely rather than writing a
+      // value nobody reads: the exact "save succeeds, nothing visible
+      // changes" bug this round fixes. Round 1's fix (the Kathmandu
+      // offset — see kathmanduLocalToISOString's own docstring) still
+      // applies whenever these ARE sent, i.e. for a Test with no session.
+      ...(form.active_session_id
+        ? {}
+        : { scheduled_start: kathmanduLocalToISOString(form.scheduled_start), scheduled_end: kathmanduLocalToISOString(form.scheduled_end) }),
       duration_minutes: Number(form.duration_minutes),
       questions_per_page: Number(form.questions_per_page) || 1,
       negative_marking: form.negative_marking,
@@ -488,26 +528,52 @@ function ExamManagementContent() {
           />
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled start (optional)</label>
-          <input
-            type="datetime-local"
-            value={form.scheduled_start}
-            onChange={(e) => setForm((f) => ({ ...f, scheduled_start: e.target.value }))}
-            className="hm-input"
-          />
+      {form.active_session_id ? (
+        // Grand Test schedule fix, round 2 — the actual root cause of
+        // "I edited Scheduled start/end, saved, and nothing changed for
+        // students": this Test's schedule is governed by a real
+        // ExamSession (resolve_test_schedule_session always prefers it
+        // over these fields), so editing them here would silently do
+        // nothing, exactly as it used to. Disabled and pointed at the
+        // one place that actually reaches students, instead of offering
+        // a save button with no visible effect.
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+          <p className="text-xs font-semibold text-[var(--color-text)]">
+            This exam&apos;s schedule is managed by its Exam Session, not these fields.
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+            Current window: {form.scheduled_start || "—"} to {form.scheduled_end || "—"} (Asia/Kathmandu)
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(`/exam-management/${editingId}`)}
+            className="mt-2 text-xs font-bold text-brand-blue"
+          >
+            Edit Schedule on the Exam page →
+          </button>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled end (optional)</label>
-          <input
-            type="datetime-local"
-            value={form.scheduled_end}
-            onChange={(e) => setForm((f) => ({ ...f, scheduled_end: e.target.value }))}
-            className="hm-input"
-          />
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled start (optional)</label>
+            <input
+              type="datetime-local"
+              value={form.scheduled_start}
+              onChange={(e) => setForm((f) => ({ ...f, scheduled_start: e.target.value }))}
+              className="hm-input"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Scheduled end (optional)</label>
+            <input
+              type="datetime-local"
+              value={form.scheduled_end}
+              onChange={(e) => setForm((f) => ({ ...f, scheduled_end: e.target.value }))}
+              className="hm-input"
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 

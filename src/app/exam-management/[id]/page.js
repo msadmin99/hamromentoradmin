@@ -7,6 +7,7 @@ import Modal from "@/components/Modal";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import { api } from "@/lib/api";
+import { formatKathmandu, isValidScheduleWindow, isoToKathmanduLocal, kathmanduLocalToISOString } from "@/lib/kathmanduDatetime";
 
 const SESSION_STATUS_META = {
   draft: { label: "Draft", className: "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]" },
@@ -19,7 +20,9 @@ const SESSION_STATUS_META = {
 
 function formatDateTime(value) {
   if (!value) return "—";
-  return new Date(value).toLocaleString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+  // Grand Test schedule timezone fix: explicit Asia/Kathmandu (was the
+  // viewer's own browser-local zone).
+  return formatKathmandu(value, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function InfoTile({ label, value }) {
@@ -31,24 +34,41 @@ function InfoTile({ label, value }) {
   );
 }
 
+// Grand Test schedule fix, round 2 — THIS is the editor that actually
+// reaches students (it writes ExamSession.start_datetime/end_datetime
+// directly, the object resolve_test_schedule_session() prefers whenever
+// one exists). It had the exact same timezone bug as the Admin's other
+// two schedule forms: `session.start_datetime.slice(0, 16)` showed the
+// raw UTC wall-clock digits in a field the admin reads as Asia/Kathmandu
+// time, and `new Date(form.start_datetime).toISOString()` reinterpreted
+// that naive value in the admin's own BROWSER-local zone before sending
+// it — not Kathmandu either way. Now goes through the same shared
+// kathmanduDatetime.js helpers as exam-management/page.js and the
+// Reschedule page.
 function EditSessionModal({ session, onClose, onSaved }) {
   const [form, setForm] = useState({
-    start_datetime: session.start_datetime.slice(0, 16),
-    end_datetime: session.end_datetime.slice(0, 16),
-    registration_deadline: session.registration_deadline ? session.registration_deadline.slice(0, 16) : "",
+    start_datetime: isoToKathmanduLocal(session.start_datetime),
+    end_datetime: isoToKathmanduLocal(session.end_datetime),
+    registration_deadline: isoToKathmanduLocal(session.registration_deadline),
     max_attempts: session.max_attempts,
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function save() {
+    const startISO = kathmanduLocalToISOString(form.start_datetime);
+    const endISO = kathmanduLocalToISOString(form.end_datetime);
+    if (!isValidScheduleWindow(startISO, endISO)) {
+      setError("End must be after the start.");
+      return;
+    }
     setError("");
     setSaving(true);
     try {
       await api.patch(`/exam-sessions/${session.id}/`, {
-        start_datetime: new Date(form.start_datetime).toISOString(),
-        end_datetime: new Date(form.end_datetime).toISOString(),
-        registration_deadline: form.registration_deadline ? new Date(form.registration_deadline).toISOString() : null,
+        start_datetime: startISO,
+        end_datetime: endISO,
+        registration_deadline: kathmanduLocalToISOString(form.registration_deadline),
         max_attempts: Number(form.max_attempts),
       });
       onSaved();

@@ -8,6 +8,7 @@ import QuestionPicker from "@/components/QuestionPicker";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import { api } from "@/lib/api";
+import { formatKathmandu, kathmanduLocalToISOString } from "@/lib/kathmanduDatetime";
 
 const ACCESS_OPTIONS = [
   { key: "all", label: "All eligible students" },
@@ -60,7 +61,8 @@ function RescheduleContent() {
   const [sessionName, setSessionName] = useState("");
   const [examDate, setExamDate] = useState("");
   const [startTime, setStartTime] = useState("19:00");
-  const [timezone, setTimezone] = useState("Asia/Kathmandu");
+  // Fixed, not editable state — see the Timezone field's own comment below.
+  const timezone = "Asia/Kathmandu";
   const [registrationDeadline, setRegistrationDeadline] = useState("");
   const [accessType, setAccessType] = useState("all");
   const [accessCourseIds, setAccessCourseIds] = useState([]);
@@ -97,12 +99,20 @@ function RescheduleContent() {
 
   const needsNewVersion = useMemo(() => Object.values(reuseConfig).some((v) => !v), [reuseConfig]);
 
+  // Grand Test schedule timezone fix: kathmanduLocalToISOString attaches
+  // the explicit +05:45 offset before this ever becomes a Date object —
+  // the admin's "Exam Date" + "Start Time" wall-clock entry is always
+  // Asia/Kathmandu (the one timezone this platform schedules exams in),
+  // never the browser's own ambient zone, which is what `new Date(
+  // `${examDate}T${startTime}`)` used to silently assume.
+  const startISO = useMemo(() => kathmanduLocalToISOString(examDate && startTime ? `${examDate}T${startTime}` : null), [examDate, startTime]);
+
   const endTime = useMemo(() => {
-    if (!examDate || !startTime || !test) return null;
-    const start = new Date(`${examDate}T${startTime}`);
+    if (!startISO || !test) return null;
+    const start = new Date(startISO);
     if (Number.isNaN(start.getTime())) return null;
     return new Date(start.getTime() + test.duration_minutes * 60000);
-  }, [examDate, startTime, test]);
+  }, [startISO, test]);
 
   function toggleReuse(key) {
     setReuseConfig((f) => ({ ...f, [key]: !f[key] }));
@@ -110,9 +120,13 @@ function RescheduleContent() {
 
   function validate() {
     if (!examDate || !startTime) return "Exam date and start time are required.";
-    const start = new Date(`${examDate}T${startTime}`);
+    const start = new Date(startISO);
     if (start < new Date()) return "Cannot schedule an exam session in the past.";
-    if (registrationDeadline && new Date(registrationDeadline) > start) {
+    // registrationDeadline is the same kind of datetime-local value as
+    // examDate/startTime, so it needs the identical Kathmandu-explicit
+    // conversion before comparing against `start` — otherwise the two
+    // sides of this comparison would be in different, inconsistent zones.
+    if (registrationDeadline && new Date(kathmanduLocalToISOString(registrationDeadline)) > start) {
       return "Registration deadline must be before the exam start time.";
     }
     if (accessType === "private" && !password.trim()) return "A password is required for private access.";
@@ -135,13 +149,12 @@ function RescheduleContent() {
   async function submit() {
     setSubmitting(true);
     setError("");
-    const start = new Date(`${examDate}T${startTime}`);
     try {
       await api.post(`/tests/${id}/reschedule/`, {
         session_name: sessionName,
-        start_datetime: start.toISOString(),
+        start_datetime: startISO,
         end_datetime: endTime.toISOString(),
-        registration_deadline: registrationDeadline ? new Date(registrationDeadline).toISOString() : null,
+        registration_deadline: kathmanduLocalToISOString(registrationDeadline),
         timezone,
         access_type: accessType,
         access_course_ids: accessType === "course" ? accessCourseIds : undefined,
@@ -182,7 +195,7 @@ function RescheduleContent() {
         <InfoTile label="Duration" value={`${test.duration_minutes} Minutes`} />
         <InfoTile label="Total Marks" value={test.total_marks} />
         <InfoTile label="Negative Marking" value={test.negative_marking ? "Yes" : "No"} />
-        <InfoTile label="Original Session" value={test.scheduled_start ? new Date(test.scheduled_start).toLocaleDateString() : "Not scheduled"} />
+        <InfoTile label="Original Session" value={test.scheduled_start ? formatKathmandu(test.scheduled_start, { day: "numeric", month: "short", year: "numeric" }) : "Not scheduled"} />
         <InfoTile label="Status" value={sessionCount > 0 ? "Has previous sessions" : "Never scheduled"} />
       </div>
 
@@ -206,14 +219,24 @@ function RescheduleContent() {
               <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">End Time</label>
               <input
                 readOnly
-                value={endTime ? endTime.toLocaleString("en-US", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }) : ""}
+                value={endTime ? formatKathmandu(endTime, { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }) : ""}
                 className="hm-input bg-[var(--color-surface-muted)]"
                 placeholder="Calculated from duration"
               />
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--color-text-muted)]">Timezone</label>
-              <input value={timezone} onChange={(e) => setTimezone(e.target.value)} className="hm-input" />
+              {/* Grand Test schedule timezone fix: this used to be a free-text
+                  field whose value was stored as a label but never actually
+                  used by the Exam Date/Start Time math above (which read the
+                  admin's BROWSER's own local zone instead) — editing it
+                  looked like it controlled the schedule but didn't. Every
+                  exam on this platform is scheduled in Asia/Kathmandu
+                  (confirmed: ExamSession.timezone's own backend default, and
+                  the only zone used anywhere in this codebase), so this is
+                  now a fixed, read-only statement of fact rather than a
+                  control that could silently disagree with the real math. */}
+              <input readOnly disabled value={timezone} className="hm-input bg-[var(--color-surface-muted)]" />
             </div>
           </div>
           <div>
@@ -343,7 +366,7 @@ function RescheduleContent() {
             <div className="rounded-xl bg-[var(--color-surface-muted)] p-3 text-sm">
               <p className="font-semibold text-[var(--color-text)]">New Session:</p>
               <p className="text-[var(--color-text-muted)]">
-                {examDate && new Date(`${examDate}T${startTime}`).toLocaleString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                {examDate && formatKathmandu(startISO, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}
               </p>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <p className="text-[var(--color-text-muted)]">Questions: <span className="font-semibold text-[var(--color-text)]">{needsNewVersion && !reuseConfig.questions ? newQuestions.length : test.question_count}</span></p>
