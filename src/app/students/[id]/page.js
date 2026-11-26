@@ -705,24 +705,46 @@ function DevicesTab({ student, onChanged }) {
           <tr>
             <th className="whitespace-nowrap px-4 py-2.5">Device</th>
             <th className="whitespace-nowrap px-4 py-2.5">Last Seen</th>
+            <th className="whitespace-nowrap px-4 py-2.5">Status</th>
             <th className="whitespace-nowrap px-4 py-2.5" />
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-border)]">
-          {devices.map((d) => (
-            <tr key={d.id}>
-              <td className="px-4 py-2.5 text-[var(--color-text)]">{d.device_label || "Unknown device"}</td>
-              <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-muted)]">{formatDateTime(d.last_seen)}</td>
-              <td className="whitespace-nowrap px-4 py-2.5 text-right">
-                <button type="button" onClick={() => setAction({ deviceId: d.id })} className="text-xs font-semibold text-brand-red">
-                  Revoke
-                </button>
-              </td>
-            </tr>
-          ))}
+          {devices.map((d) => {
+            // `is_active` comes straight from the backend (revoked_at IS
+            // NULL) — never inferred client-side, so this can never drift
+            // from what actually happened. A revoked row is kept visible
+            // (not removed from the list) for audit/history, matching the
+            // Device & Session Access tool's own "(removed)" treatment —
+            // only its Revoke button goes away, since revoking twice is
+            // meaningless.
+            const active = d.is_active !== false;
+            return (
+              <tr key={d.id}>
+                <td className="px-4 py-2.5 text-[var(--color-text)]">{d.device_label || "Unknown device"}</td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-muted)]">{formatDateTime(d.last_seen)}</td>
+                <td className="whitespace-nowrap px-4 py-2.5">
+                  {active ? (
+                    <span className="rounded-md bg-brand-green-light px-2 py-1 text-[10px] font-bold text-brand-green">Active</span>
+                  ) : (
+                    <span className="rounded-md bg-[var(--color-surface-muted)] px-2 py-1 text-[10px] font-bold text-[var(--color-text-muted)]">
+                      Revoked{d.revoked_at ? ` ${formatDateTime(d.revoked_at)}` : ""}
+                    </span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                  {active && (
+                    <button type="button" onClick={() => setAction({ deviceId: d.id })} className="text-xs font-semibold text-brand-red">
+                      Revoke
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
           {devices.length === 0 && (
             <tr>
-              <td colSpan={3} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
+              <td colSpan={4} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
                 No devices on record.
               </td>
             </tr>
