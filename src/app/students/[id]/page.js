@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import SecurityActionDialog from "@/components/SecurityActionDialog";
 import RequireStaff from "@/components/RequireStaff";
 import Shell from "@/components/Shell";
 import { api } from "@/lib/api";
@@ -683,8 +684,17 @@ function VerificationTab({ student, onChanged }) {
   );
 }
 
-function DevicesTab({ student }) {
+function DevicesTab({ student, onChanged }) {
   const devices = student.devices || [];
+  // Reuses the same reviewed/audited revoke action the dedicated Device &
+  // Session Access tool (src/app/device-access/page.js) already exposes —
+  // SecurityActionDialog itself re-fetches this account's current device
+  // snapshot/permissions and requires a reason + explicit confirmation
+  // before calling the real POST .../devices/{id}/revoke/ endpoint. This
+  // is the same safe path, just reachable directly from the account a
+  // staff member is already looking at, instead of requiring a second
+  // search on a separate page.
+  const [action, setAction] = useState(null);
   return (
     <div className="hm-card overflow-x-auto">
       <p className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-bold text-[var(--color-text)]">
@@ -695,6 +705,7 @@ function DevicesTab({ student }) {
           <tr>
             <th className="whitespace-nowrap px-4 py-2.5">Device</th>
             <th className="whitespace-nowrap px-4 py-2.5">Last Seen</th>
+            <th className="whitespace-nowrap px-4 py-2.5" />
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-border)]">
@@ -702,17 +713,34 @@ function DevicesTab({ student }) {
             <tr key={d.id}>
               <td className="px-4 py-2.5 text-[var(--color-text)]">{d.device_label || "Unknown device"}</td>
               <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-muted)]">{formatDateTime(d.last_seen)}</td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                <button type="button" onClick={() => setAction({ deviceId: d.id })} className="text-xs font-semibold text-brand-red">
+                  Revoke
+                </button>
+              </td>
             </tr>
           ))}
           {devices.length === 0 && (
             <tr>
-              <td colSpan={2} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
+              <td colSpan={3} className="px-4 py-6 text-center text-[var(--color-text-muted)]">
                 No devices on record.
               </td>
             </tr>
           )}
         </tbody>
       </table>
+      {action && (
+        <SecurityActionDialog
+          targetId={student.id}
+          operation="revoke"
+          deviceId={action.deviceId}
+          onClose={() => setAction(null)}
+          onDone={() => {
+            setAction(null);
+            onChanged?.();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -881,7 +909,7 @@ function StudentDetailContent() {
             {tab === "enrollments" && <EnrollmentsTab student={student} />}
             {tab === "payments" && <PaymentsTab student={student} />}
             {tab === "activity" && <ActivityTab student={student} />}
-            {tab === "devices" && <DevicesTab student={student} />}
+            {tab === "devices" && <DevicesTab student={student} onChanged={load} />}
             {tab === "verification" && <VerificationTab student={student} onChanged={load} />}
           </div>
         </>
